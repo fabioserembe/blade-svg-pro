@@ -1,0 +1,58 @@
+{
+  "name": "fabioserembe/blade-svg-pro",
+  "description": "A Laravel package to convert (massively and recursively) SVG files in a folder into a single .blade.php file",
+  "version": "1.0.0",
+  "keywords": [
+    "fabioserembe",
+    "blade-svg-pro"
+  ],
+  "homepage": "https://github.com/fabioserembe/blade-svg-pro",
+  "license": "MIT",
+  "type": "library",
+  "authors": [
+    {
+      "name": "Fabio Serembe",
+      "email": "fabio.serembe@gmail.com",
+      "role": "Developer"
+    }
+  ],
+  "require": {
+    "php": "^8.0",
+    "illuminate/collections": "^8.0|^9.0|^10.0|^11.0",
+    "illuminate/console": "^8.0|^9.0|^10.0|^11.0",
+    "illuminate/support": "^8.0|^9.0|^10.0|^11.0",
+    "laravel/prompts": "^0.1.25",
+    "spatie/image-optimizer": "^1.7",
+    "ext-simplexml": "*"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^9.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "FabioSerembe\\BladeSVGPro\\": "src"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "FabioSerembe\\BladeSVGPro\\Tests\\": "tests"
+    }
+  },
+  "scripts": {
+    "test": "vendor/bin/phpunit",
+    "test-coverage": "vendor/bin/phpunit --coverage-html coverage"
+  },
+  "config": {
+    "sort-packages": true
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "FabioSerembe\\BladeSVGPro\\BladeSVGProServiceProvider"
+      ],
+      "aliases": {
+        "BladeSVGPro": "FabioSerembe\\BladeSVGPro\\BladeSVGProFacade"
+      }
+    }
+  }
+}
