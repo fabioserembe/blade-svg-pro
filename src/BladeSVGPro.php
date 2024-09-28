@@ -87,7 +87,7 @@ class BladeSVGPro extends Command
             label: 'Specify the name of the file .blade.php',
             required: true,
             hint: 'The name will convert automatically to kebab-case',
-            transform: fn (string $value) => str()->kebab($value),
+            transform: fn(string $value) => str()->kebab($value),
         );
 
         return "$file_name.blade.php";
@@ -99,10 +99,10 @@ class BladeSVGPro extends Command
         $optimizerChain = OptimizerChainFactory::create();
 
         // File di output
-        $output_file = $output . '/' . $file_name;
+        $output_file = $output.'/'.$file_name;
 
         // Inizializza il contenuto del file blade
-        File::put($output_file, "@props(['name' => null, 'size' => 'size-6', 'color' => 'text-zinc-900', 'bg' => 'fill-zinc-100'])\n@switch(\$name)\n");
+        File::put($output_file, "@props(['name' => null])\n@switch(\$name)\n");
 
         // Scorre tutti i file SVG nella directory e nelle sottodirectory
         foreach (File::allFiles($input) as $svgFile) {
@@ -122,9 +122,26 @@ class BladeSVGPro extends Command
                 // Estrai le dimensioni width e height
                 [$width, $height] = $this->extractDimensions($svgFile->getPathname());
 
+                if ($width !== $height) {
+                    // Forma a rettangolo?
+                    $viewBoxWidth = $width;
+                    $viewBoxHeight = $height;
+                } else {
+                    // Forma a quadrato?
+                    if ($width < 24 && $height < 24) {
+                        $viewBoxWidth = $width;
+                        $viewBoxHeight = $height;
+                    } else {
+                        $viewBoxWidth = 24;
+                        $viewBoxHeight = 24;
+                    }
+                }
+
+                $viewBoxWH = "$viewBoxWidth $viewBoxHeight";
+
                 // Aggiungi il case al file Blade
                 File::append($output_file, "@case('$kebabCaseIconName')\n");
-                File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" data-name='blade-svg-pro' width=\"$width\" height=\"$height\" viewBox=\"0 0 $width $height\" {{ \$attributes->merge(['class' => \$size . ' ' . \$color . ' ' . \$bg]) }}>\n");
+                File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"0 0 $viewBoxWH\" {{ \$attributes->merge(['class' => 'size-6 text-zinc-900']) }}>\n");
                 File::append($output_file, "$svgContent\n</svg>\n");
 
                 // Chiudi il case
@@ -220,7 +237,8 @@ class BladeSVGPro extends Command
             if ($fillColor !== 'none') {
                 if ($isBackgroundElement) {
                     // Elemento di sfondo: imposta fill="fillCurrent"
-                    $element['fill'] = 'fillCurrent';
+                    $element['fill'] = 'currentColor';
+                    $element['opacity'] = '0.3';
                 } else {
                     // Elemento dell'icona: imposta fill="currentColor"
                     $element['fill'] = 'currentColor';
@@ -231,7 +249,9 @@ class BladeSVGPro extends Command
         // Gestione dello stroke
         if (isset($element['stroke'])) {
             $strokeColor = strtolower(trim((string) $element['stroke']));
-            if ($strokeColor !== 'none') {
+            if ($strokeColor === 'transparent' || $strokeColor === 'rgba(0,0,0,0)') {
+                $element['stroke'] = 'none';
+            } elseif ($strokeColor !== 'none') {
                 // Imposta stroke="currentColor" solo se l'elemento non è uno sfondo
                 if (!$isBackgroundElement) {
                     $element['stroke'] = 'currentColor';
@@ -341,10 +361,16 @@ class BladeSVGPro extends Command
             }
         }
 
-        // Valori predefiniti se non trovati
-        $width = $width ?? 24;
-        $height = $height ?? 24;
+        //        if(($width !== 24 || $height !== 24) && $width !== $height) {
+        //            return [$width, $height];
+        //        } else {
+        //            return [24, 24];
+        //        }
 
+        // Valori predefiniti se non trovati
+        //        $width = $width ?? 24;
+        //        $height = $height ?? 24;
+        //
         return [$width, $height];
     }
 
@@ -365,7 +391,7 @@ class BladeSVGPro extends Command
             label: 'Specify the stroke width of the SVG icon/package (in px)',
             default: '1.5',
             required: true,
-            transform: fn (string $value) => str()->replaceFirst('px', '', $value)
+            transform: fn(string $value) => str()->replaceFirst('px', '', $value)
         );
     }
 }
