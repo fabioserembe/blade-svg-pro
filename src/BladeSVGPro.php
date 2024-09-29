@@ -50,8 +50,6 @@ class BladeSVGPro extends Command
 
     private function askForOutputDirectory()
     {
-        $filesystem = new Filesystem();
-
         $directories = $this->getAllDirectories(resource_path('views'));
 
         $output = $this->option('o') ?? suggest(
