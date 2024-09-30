@@ -3,11 +3,11 @@
 namespace FabioSerembe\BladeSVGPro;
 
 use Illuminate\Console\Command;
-use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\File;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use Spatie\ImageOptimizer\OptimizerChainFactory;
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\suggest;
 use function Laravel\Prompts\text;
 
@@ -16,6 +16,8 @@ class BladeSVGPro extends Command
     // Il nome e la descrizione del command
     protected $signature = 'blade-svg-pro:convert {--i=} {--o=}';
     protected $description = 'Converte file SVG massivamente in un componente Blade';
+
+    protected $file_name;
 
     public function handle()
     {
@@ -26,10 +28,10 @@ class BladeSVGPro extends Command
         $output = $this->askForOutputDirectory();
 
         // File name
-        $file_name = $this->askForFileName();
+        $this->file_name = $this->askForFileName($output);
 
         // Conversion
-        $this->convertSvgToBlade($input, $output, $file_name);
+        $this->convertSvgToBlade($input, $output, $this->file_name);
 
         $this->info("Conversion completed!");
     }
@@ -76,16 +78,51 @@ class BladeSVGPro extends Command
         return $directories;
     }
 
-    private function askForFileName()
+    private function askForFileName($output)
     {
-        $file_name = text(
+        $this->file_name = text(
             label: 'Specify the name of the file .blade.php',
             required: true,
             hint: 'The name will convert automatically to kebab-case',
-            transform: fn(string $value) => str()->kebab($value),
+            transform: fn(string $value) => str()->kebab($value)
         );
 
-        return "$file_name.blade.php";
+        $output_file = "$output/$this->file_name.blade.php";
+
+        if (File::exists($output_file)) {
+            $confirmed = confirm(
+                label: 'The file "'.$this->file_name.'" already exists, do you want to overwrite it?',
+                default: false,
+            );
+
+            if($confirmed) {
+                return "$this->file_name.blade.php";
+            } else {
+                $this->askForFileName($output);
+            }
+        }
+
+        return "$this->file_name.blade.php";
+    }
+
+    private function convertToKebabCase(string $value): string
+    {
+        // Rimuovi eventuali spazi extra
+        $value = trim($value);
+
+        // Sostituisci tutti i trattini con spazi attorno con un singolo trattino senza spazi
+        $value = preg_replace('/\s*-\s*/', '-', $value);
+
+        // Rimuovi le parentesi aperte e chiuse
+        $value = preg_replace('/[()]/', '', $value);
+
+        // Sostituisci tutti gli spazi rimanenti e underscore con un trattino
+        $value = preg_replace('/[\s_]+/', '-', $value);
+
+        // Rendi tutto minuscolo
+        $value = strtolower($value);
+
+        return $value;
     }
 
     private function convertSvgToBlade($input, $output, $file_name)
@@ -94,10 +131,16 @@ class BladeSVGPro extends Command
         $optimizerChain = OptimizerChainFactory::create();
 
         // File di output
-        $output_file = $output.'/'.$file_name;
+        $output_file = $output.'/'.$this->file_name;
 
         // Inizializza il contenuto del file blade
         File::put($output_file, "@props(['name' => null, 'default' => 'size-4'])\n@switch(\$name)\n");
+
+        // Ottieni tutti i file SVG dalla directory e sottodirectory
+        $svgFiles = File::allFiles($input);
+
+        // Utilizza una barra di progresso per mostrare lo stato di avanzamento
+        $this->output->progressStart(count($svgFiles));
 
         // Scorre tutti i file SVG nella directory e nelle sottodirectory
         foreach (File::allFiles($input) as $svgFile) {
@@ -109,7 +152,7 @@ class BladeSVGPro extends Command
                 $iconName = $svgFile->getFilenameWithoutExtension();
 
                 // Trasformalo in kebab-case
-                $kebabCaseIconName = str()->kebab($iconName);
+                $kebabCaseIconName = $this->convertToKebabCase($iconName);
 
                 // Leggi e processa il contenuto dell'SVG
                 $svgContent = $this->processSvgContent($svgFile->getPathname());
@@ -142,7 +185,13 @@ class BladeSVGPro extends Command
                 // Chiudi il case
                 File::append($output_file, "@break\n");
             }
+
+            // Avanza la barra di progresso di un passo
+            $this->output->progressAdvance();
         }
+
+        // Chiudi la barra di progresso
+        $this->output->progressFinish();
 
         // Chiudi lo switch
         File::append($output_file, "@endswitch\n");
