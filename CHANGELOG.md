@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes to `svg-file-to-blade-component` will be documented in this file
+All notable changes to `blade-svg-pro` will be documented in this file
 
-## 1.0.0 - 201X-XX-XX
+## 1.0.0 - 2024-10-09
 
-- initial release
+- Initial release
