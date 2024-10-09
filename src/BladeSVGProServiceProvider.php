@@ -12,16 +12,6 @@ class BladeSVGProServiceProvider extends ServiceProvider
      */
     public function boot()
     {
-        // Pubblicazione del file JS
-        $this->publishes([
-            __DIR__.'/../resources/js' => public_path('vendor/fabioserembe/js'),
-        ], 'public');
-
-        // Definisci la direttiva Blade per includere lo script
-        Blade::directive('svgBboxScripts', function () {
-            return '<script src="' . asset('vendor/fabioserembe/js/blade-svg-pro.js') . '"></script>';
-        });
-        // Registering package commands.
         $this->commands([
             BladeSVGPro::class
         ]);

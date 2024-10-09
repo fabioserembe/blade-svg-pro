@@ -13,9 +13,9 @@ use function Laravel\Prompts\text;
 
 class BladeSVGPro extends Command
 {
-    // Il nome e la descrizione del command
+    // The name and description of the command
     protected $signature = 'blade-svg-pro:convert {--i=} {--o=}';
-    protected $description = 'Converte file SVG massivamente in un componente Blade';
+    protected $description = 'Convert SVGs into a Blade component';
 
     protected $file_name;
 
@@ -43,7 +43,7 @@ class BladeSVGPro extends Command
             required: true
         );
         if (!File::isDirectory($input)) {
-            $this->error("La directory $input non esiste, riprovare.");
+            $this->error("The directory '$input' does not exist. Please try again");
             $input = $this->askForInputDirectory();
         }
 
@@ -81,9 +81,9 @@ class BladeSVGPro extends Command
     private function askForFileName($output)
     {
         $this->file_name = text(
-            label: 'Specify the name of the file .blade.php',
+            label: 'Specify the name of the file',
             required: true,
-            hint: 'The name will convert automatically to kebab-case',
+            hint: "The name will convert automatically to kebab-case. (The extension '.blade.php' will be automatically added)",
             transform: fn(string $value) => str()->kebab($value)
         );
 
@@ -91,7 +91,7 @@ class BladeSVGPro extends Command
 
         if (File::exists($output_file)) {
             $confirmed = confirm(
-                label: 'The file "'.$this->file_name.'" already exists, do you want to overwrite it?',
+                label: "The file '$this->file_name' already exists, do you want to overwrite it?",
                 default: false,
             );
 
@@ -107,19 +107,19 @@ class BladeSVGPro extends Command
 
     private function convertToKebabCase(string $value): string
     {
-        // Rimuovi eventuali spazi extra
+        // Remove any extra spaces
         $value = trim($value);
 
-        // Sostituisci tutti i trattini con spazi attorno con un singolo trattino senza spazi
+        // Replace all dashes with spaces around them with a single dash without spaces
         $value = preg_replace('/\s*-\s*/', '-', $value);
 
-        // Rimuovi le parentesi aperte e chiuse
+        // Remove open and closed parentheses
         $value = preg_replace('/[()]/', '', $value);
 
-        // Sostituisci tutti gli spazi rimanenti e underscore con un trattino
+        // Replace all remaining spaces and underscores with a dash
         $value = preg_replace('/[\s_]+/', '-', $value);
 
-        // Rendi tutto minuscolo
+        // Convert everything to lowercase
         $value = strtolower($value);
 
         return $value;
@@ -127,45 +127,45 @@ class BladeSVGPro extends Command
 
     private function convertSvgToBlade($input, $output, $file_name)
     {
-        // Crea l'ottimizzatore
+        // Create the optimizer
         $optimizerChain = OptimizerChainFactory::create();
 
         // File di output
         $output_file = $output.'/'.$this->file_name;
 
-        // Inizializza il contenuto del file blade
+        // Initialize the content of the blade file
         File::put($output_file, "@props(['name' => null, 'default' => 'size-4'])\n@switch(\$name)\n");
 
-        // Ottieni tutti i file SVG dalla directory e sottodirectory
+        // Get all SVG files from the directory and subdirectories
         $svgFiles = File::allFiles($input);
 
-        // Utilizza una barra di progresso per mostrare lo stato di avanzamento
+        // Use a progress bar to show the progress status
         $this->output->progressStart(count($svgFiles));
 
-        // Scorre tutti i file SVG nella directory e nelle sottodirectory
+        // Iterate over all SVG files in the directory and subdirectories
         foreach (File::allFiles($input) as $svgFile) {
             if ($svgFile->getExtension() === 'svg') {
-                // Ottimizza il file SVG
+                // Optimize the SVG file
                 $this->optimizeSvg($svgFile->getPathname(), $optimizerChain);
 
-                // Ottieni il nome dell'icona senza estensione
+                // Get the icon name without extension
                 $iconName = $svgFile->getFilenameWithoutExtension();
 
-                // Trasformalo in kebab-case
+                // Convert to kebab-case
                 $kebabCaseIconName = $this->convertToKebabCase($iconName);
 
-                // Leggi e processa il contenuto dell'SVG
+                // Read and process the SVG content
                 $svgContent = $this->processSvgContent($svgFile->getPathname());
 
-                // Estrai le dimensioni width e height
+                // Extract width and height dimensions
                 [$width, $height] = $this->extractDimensions($svgFile->getPathname());
 
                 if ($width !== $height) {
-                    // Forma a rettangolo?
+                    // Rectangle shape?
                     $viewBoxWidth = $width;
                     $viewBoxHeight = $height;
                 } else {
-                    // Forma a quadrato?
+                    // Square shape?
                     if ($width < 24 && $height < 24) {
                         $viewBoxWidth = $width;
                         $viewBoxHeight = $height;
@@ -177,55 +177,55 @@ class BladeSVGPro extends Command
 
                 $viewBoxWH = "$viewBoxWidth $viewBoxHeight";
 
-                // Aggiungi il case al file Blade
+                // Add the case to the Blade file
                 File::append($output_file, "@case('$kebabCaseIconName')\n");
                 File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"0 0 $viewBoxWH\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
                 File::append($output_file, "$svgContent\n</svg>\n");
 
-                // Chiudi il case
+                // Close the case
                 File::append($output_file, "@break\n");
             }
 
-            // Avanza la barra di progresso di un passo
+            // Advance the progress bar by one step
             $this->output->progressAdvance();
         }
 
-        // Chiudi la barra di progresso
+        // Close the progress bar
         $this->output->progressFinish();
 
-        // Chiudi lo switch
+        // Close the switch
         File::append($output_file, "@endswitch\n");
     }
 
     private function optimizeSvg(string $filePath, $optimizerChain)
     {
-        // Esegui l'ottimizzazione del file SVG
+        // Execute optimization of the SVG file
         $optimizerChain->optimize($filePath);
     }
 
     private function processSvgContent(string $filePath): string
     {
-        // Carica l'SVG usando SimpleXML
+        // Load the SVG using SimpleXML
         $svg = simplexml_load_file($filePath);
 
-        // Rimuove eventuali spazi extra e normalizza gli attributi
+        // Remove any extra spaces and normalize attributes
         $this->normalizeAttributes($svg);
 
-        // Ottieni le dimensioni dell'SVG
+        // Get SVG dimensions
         $svgDimensions = $this->getSvgDimensions($svg);
 
-        // Sostituisce fill e stroke con valori appropriati
+        // Replace fill and stroke with appropriate values
         $this->replaceFillAndStroke($svg, $svgDimensions);
 
-        // Converti SimpleXMLElement in DOMDocument
+        // Convert SimpleXMLElement to DOMDocument
         $dom = new \DOMDocument();
         $dom->loadXML($svg->asXML(), LIBXML_NOXMLDECL);
 
-        // Rimuove la dichiarazione XML
+        // Remove the XML declaration
         $dom->preserveWhiteSpace = false;
         $dom->formatOutput = false;
 
-        // Ottieni il contenuto interno del nodo <svg>, escludendo il tag <svg> stesso
+        // Get the inner content of the <svg> node, excluding the <svg> tag itself
         $innerContent = '';
         foreach ($dom->documentElement->childNodes as $child) {
             $innerContent .= $dom->saveXML($child);
@@ -236,13 +236,13 @@ class BladeSVGPro extends Command
 
     private function normalizeAttributes(\SimpleXMLElement $element)
     {
-        // Rimuove spazi extra dagli attributi
+        // Remove extra spaces from attributes
         foreach ($element->attributes() as $name => $value) {
             $value = trim(preg_replace('/\s+/', ' ', (string) $value));
             $element[$name] = $value;
         }
 
-        // Processa i figli ricorsivamente
+        // Process children recursively
         foreach ($element->children() as $child) {
             $this->normalizeAttributes($child);
         }
@@ -253,7 +253,7 @@ class BladeSVGPro extends Command
         $width = isset($svg['width']) ? $this->parseDimension($svg['width']) : null;
         $height = isset($svg['height']) ? $this->parseDimension($svg['height']) : null;
 
-        // Se width e height non sono specificati, prova a estrarre dal viewBox
+        // If width and height are not specified, try to extract from viewBox
         if (!$width || !$height) {
             if (isset($svg['viewBox'])) {
                 $viewBox = explode(' ', (string) $svg['viewBox']);
@@ -269,41 +269,41 @@ class BladeSVGPro extends Command
 
     private function replaceFillAndStroke(\SimpleXMLElement $element, $svgDimensions)
     {
-        // Calcola il bounding box dell'elemento
+        // Calculate the bounding box of the element
         $elementDimensions = $this->getElementDimensions($element);
 
-        // Determina se l'elemento è uno sfondo
+        // Determine if the element is a background
         $isSecondaryElement = $this->isSecondaryElement($elementDimensions, $svgDimensions);
 
-        // Gestione del fill
+        // Manage fill
         if (isset($element['fill'])) {
             $fillColor = strtolower(trim((string) $element['fill']));
             if ($fillColor !== 'none') {
                 if ($isSecondaryElement) {
-                    // Elemento secondario
+                    // Secondary element
                     $element['fill'] = 'currentColor';
                     $element['opacity'] = '0.3';
                 } else {
-                    // Elemento primario
+                    // Primary element
                     $element['fill'] = 'currentColor';
                 }
             }
         }
 
-        // Gestione dello stroke
+        // Manage stroke
         if (isset($element['stroke'])) {
             $strokeColor = strtolower(trim((string) $element['stroke']));
             if ($strokeColor === 'transparent' || $strokeColor === 'rgba(0,0,0,0)') {
                 $element['stroke'] = 'none';
             } elseif ($strokeColor !== 'none') {
-                // Imposta stroke="currentColor" solo se l'elemento non è uno sfondo
+                // Set stroke="currentColor" only if the element is not a background
                 if (!$isSecondaryElement) {
                     $element['stroke'] = 'currentColor';
                 }
             }
         }
 
-        // Processa i figli ricorsivamente
+        // Process children recursively
         foreach ($element->children() as $child) {
             $this->replaceFillAndStroke($child, $svgDimensions);
         }
@@ -311,13 +311,13 @@ class BladeSVGPro extends Command
 
     private function getElementDimensions(\SimpleXMLElement $element)
     {
-        // Ottieni gli attributi x, y, width, height
+        // Get x, y, width, height attributes
         $x = isset($element['x']) ? $this->parseDimension($element['x']) : 0;
         $y = isset($element['y']) ? $this->parseDimension($element['y']) : 0;
         $width = isset($element['width']) ? $this->parseDimension($element['width']) : null;
         $height = isset($element['height']) ? $this->parseDimension($element['height']) : null;
 
-        // Per alcuni elementi come <circle> ed <ellipse>, calcola width e height
+        // For elements like <circle> and <ellipse>, calculate width and height
         if ($element->getName() === 'circle') {
             $cx = isset($element['cx']) ? $this->parseDimension($element['cx']) : 0;
             $cy = isset($element['cy']) ? $this->parseDimension($element['cy']) : 0;
@@ -336,7 +336,7 @@ class BladeSVGPro extends Command
             $width = $rx * 2;
             $height = $ry * 2;
         } elseif ($element->getName() === 'path') {
-            // Per i path, potremmo utilizzare getBBox, ma SimpleXML non lo supporta ritorno null
+            // For paths, we could use getBBox, but SimpleXML does not support it, return null
             $width = null;
             $height = null;
         }
@@ -351,12 +351,12 @@ class BladeSVGPro extends Command
 
     private function isSecondaryElement($elementDimensions, $svgDimensions)
     {
-        // Se non possiamo determinare le dimensioni dell'elemento, assumiamo che non sia uno sfondo
+        // If we can't determine the element's dimensions, assume it's not a background
         if ($elementDimensions['width'] === null || $elementDimensions['height'] === null) {
             return false;
         }
 
-        // Calcola la percentuale di copertura rispetto all'SVG
+        // Calculate the coverage percentage relative to the SVG
         $elementArea = $elementDimensions['width'] * $elementDimensions['height'];
         $svgArea = $svgDimensions['width'] * $svgDimensions['height'];
 
@@ -366,12 +366,12 @@ class BladeSVGPro extends Command
 
         $coverage = ($elementArea / $svgArea) * 100;
 
-        // Se l'elemento copre più del 90% dell'area dell'SVG, consideralo uno sfondo
+        // If the element covers more than 90% of the SVG area, consider it a background
         if ($coverage >= 90) {
             return true;
         }
 
-        // Controlla se l'elemento inizia all'origine e ha le stesse dimensioni dell'SVG
+        // Check if the element starts at the origin and has the same dimensions as the SVG
         if (
             $elementDimensions['x'] == 0 &&
             $elementDimensions['y'] == 0 &&
@@ -386,14 +386,14 @@ class BladeSVGPro extends Command
 
     private function extractDimensions(string $filePath)
     {
-        // Carica l'SVG come SimpleXMLElement
+        // Load the SVG as SimpleXMLElement
         $svg = simplexml_load_file($filePath);
 
-        // Estrai le dimensioni width e height, gestendo unità diverse
+        // Extract width and height dimensions, handling different units
         $width = isset($svg['width']) ? $this->parseDimension($svg['width']) : null;
         $height = isset($svg['height']) ? $this->parseDimension($svg['height']) : null;
 
-        // Se width e height non sono specificati, prova a estrarre dal viewBox
+        // If width and height are not specified, try to extract from viewBox
         if (!$width || !$height) {
             if (isset($svg['viewBox'])) {
                 $viewBox = explode(' ', (string) $svg['viewBox']);
@@ -409,12 +409,12 @@ class BladeSVGPro extends Command
 
     private function parseDimension($dimension)
     {
-        // Rimuove eventuali unità di misura (es. "px", "pt", "%")
+        // Remove any measurement units (e.g., "px", "pt", "%")
         if (preg_match('/^([0-9.]+)(px|pt|%)?$/', (string) $dimension, $matches)) {
             return floatval($matches[1]);
         }
 
-        // Valore predefinito se non corrisponde
+        // Default value if no match
         return null;
     }
 }
