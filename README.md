@@ -1,9 +1,3 @@
-# Very short description of the package
-
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/fabioserembe/svg-file-to-blade-component.svg?style=flat-square)](https://packagist.org/packages/fabioserembe/svg-file-to-blade-component)
-[![Total Downloads](https://img.shields.io/packagist/dt/fabioserembe/svg-file-to-blade-component.svg?style=flat-square)](https://packagist.org/packages/fabioserembe/svg-file-to-blade-component)
-![GitHub Actions](https://github.com/fabioserembe/svg-file-to-blade-component/actions/workflows/main.yml/badge.svg)
-
 # BladeSVGPro
 BladeSVGPro is a simple package to convert SVG files into Blade component.
 
