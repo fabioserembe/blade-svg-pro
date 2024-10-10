@@ -1,5 +1,19 @@
-# BladeSVGPro
-BladeSVGPro is a simple package to convert SVG files into Blade component.
+## BladeSVGPro
+Simplify the implementation of custom icons and use them in your Laravel project by using TailwindCSS classes for styling.
+
+BladeSVGPro is a simple package for converting SVG files (and automatically optimising them) into a single ```.blade.php``` component.
+
+## Requirements
+To use BladeSVGPro, ensure you have the following requirements:
+
+- PHP: ^8.0
+- PHP Extension: `ext-simplexml`
+- Laravel core: >= 10.x
+- Additional Packages:
+    - `laravel/prompts`: ^0.1.25
+    - `spatie/image-optimizer`: ^1.7
+
+Make sure all required components are correctly installed in your environment to ensure the proper functioning of the package.
 
 ## Installation
 Run the following command to install the package:
