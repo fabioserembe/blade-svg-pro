@@ -81,4 +81,6 @@ If you discover any security related issues, please email fabio.serembe@gmail.co
 -   [Fabio Serembe](https://github.com/fabioserembe)
 
 ## Do you like this package?
-[Buy me a beer 🍺](https://buymeacoffee.com/fabioserembe)
+If you like this package and find it useful, please [Buy me a beer 🍺](https://buymeacoffee.com/fabioserembe)
+
+Thanks for your support! 🤙🏻
