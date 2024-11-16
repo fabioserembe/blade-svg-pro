@@ -8,6 +8,7 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use Spatie\ImageOptimizer\OptimizerChainFactory;
 use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\select;
 use function Laravel\Prompts\suggest;
 use function Laravel\Prompts\text;
 
@@ -31,7 +32,7 @@ class BladeSVGPro extends Command
             $output = resource_path('views/flux/icon');
 
             // Conversion
-            $this->convertSvgToBlade($input, $output, null, true);
+            $this->convertSvgToBlade($input, $output, null, true, 'multiple');
         } else {
             // Input directory path
             $input = $this->askForInputDirectory();
@@ -39,11 +40,19 @@ class BladeSVGPro extends Command
             // Output directory path
             $output = $this->askForOutputDirectory();
 
+            $type = select(
+                label: 'Do you want convert icons in a single or multiple files?',
+                options: [
+                    'single' => 'Single file',
+                    'multiple' => 'Multiple files',
+                ]
+            );
+
             // File name
-            $this->file_name = $this->askForFileName($output);
+            $this->file_name = $type === 'single' ? $this->askForFileName($output) : null;
 
             // Conversion
-            $this->convertSvgToBlade($input, $output, $this->file_name);
+            $this->convertSvgToBlade($input, $output, $this->file_name, false, $type);
         }
 
         $this->info("\nConversion completed!");
@@ -138,18 +147,18 @@ class BladeSVGPro extends Command
         return $value;
     }
 
-    private function convertSvgToBlade($input, $output, $file_name = null, $flux = false)
+    private function convertSvgToBlade($input, $output, $file_name = null, $flux = false, $type = 'single')
     {
+        if(!File::isDirectory($output)) {
+            File::makeDirectory($output, 0755, true);
+        }
+
         // Create the optimizer
         $optimizerChain = OptimizerChainFactory::create();
 
         $this->info("Start conversion");
 
-        if ($flux) {
-            if(!File::isDirectory($output)) {
-                File::makeDirectory($output, 0755, true);
-            }
-
+        if($type === 'multiple') {
             // Use a progress bar to show the progress status
             $this->output->progressStart(count(File::allFiles($input)));
 
@@ -176,14 +185,23 @@ class BladeSVGPro extends Command
                     // File di output
                     $output_file = $output.'/'.$kebabCaseIconName.'.blade.php';
 
-                    // Initialize the content of the blade file
-                    File::put($output_file, "@php \$attributes = \$unescapedForwardedAttributes ?? \$attributes; @endphp\n\n");
-                    File::append($output_file, "@props([\n\t'variant' => 'outline',\n])\n\n");
-                    File::append($output_file, "@php\n\$classes = Flux::classes('shrink-0')\n->add(match(\$variant) {\n\t'outline' => '[:where(&)]:size-6',\n\t'solid' => '[:where(&)]:size-6',\n\t'mini' => '[:where(&)]:size-5',\n\t'micro' => '[:where(&)]:size-4',\n});\n@endphp\n\n");
+                    if($flux) {
+                        // Initialize the content of the blade file
+                        File::put($output_file, "@php \$attributes = \$unescapedForwardedAttributes ?? \$attributes; @endphp\n\n");
+                        File::append($output_file, "@props([\n\t'variant' => 'outline',\n])\n\n");
+                        File::append($output_file, "@php\n\$classes = Flux::classes('shrink-0')\n->add(match(\$variant) {\n\t'outline' => '[:where(&)]:size-6',\n\t'solid' => '[:where(&)]:size-6',\n\t'mini' => '[:where(&)]:size-5',\n\t'micro' => '[:where(&)]:size-4',\n});\n@endphp\n\n");
 
-                    // Add the content of SVG icon
-                    File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"$viewBox\" {{ \$attributes->class(\$classes) }} data-flux-icon aria-hidden=\"true\">\n");
-                    File::append($output_file, "$svgContent\n</svg>\n");
+                        // Add the content of SVG icon
+                        File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"$viewBox\" {{ \$attributes->class(\$classes) }} data-flux-icon aria-hidden=\"true\">\n");
+                        File::append($output_file, "$svgContent\n</svg>\n");
+                    } else {
+                        // Initialize the content of the blade file
+                        File::put($output_file, "@props(['name' => null, 'default' => 'size-4'])\n\n");
+
+                        // Add the case to the Blade file
+                        File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"$viewBox\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
+                        File::append($output_file, "$svgContent\n</svg>\n");
+                    }
                 }
 
                 // Advance the progress bar by one step
@@ -236,12 +254,12 @@ class BladeSVGPro extends Command
                 $this->output->progressAdvance();
             }
 
-            // Close the progress bar
-            $this->output->progressFinish();
-
             // Close the switch
             File::append($output_file, "@endswitch\n");
         }
+
+        // Close the progress bar
+        $this->output->progressFinish();
     }
 
     private function getViewBox($filePath)
