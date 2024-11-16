@@ -146,6 +146,10 @@ class BladeSVGPro extends Command
         $this->info("Start conversion");
 
         if ($flux) {
+            if(!File::isDirectory($output)) {
+                File::makeDirectory($output, 0755, true);
+            }
+
             // Use a progress bar to show the progress status
             $this->output->progressStart(count(File::allFiles($input)));
 
@@ -163,25 +167,11 @@ class BladeSVGPro extends Command
                     // Read and process the SVG content
                     $svgContent = $this->processSvgContent($svgFile->getPathname());
 
+                    // Get icon viewbox
+                    $viewBox = $this->getViewBox($svgFile->getPathname());
+
                     // Extract width and height dimensions
                     [$width, $height] = $this->extractDimensions($svgFile->getPathname());
-
-                    if ($width !== $height) {
-                        // Rectangle shape?
-                        $viewBoxWidth = $width;
-                        $viewBoxHeight = $height;
-                    } else {
-                        // Square shape?
-                        if ($width < 24 && $height < 24) {
-                            $viewBoxWidth = $width;
-                            $viewBoxHeight = $height;
-                        } else {
-                            $viewBoxWidth = 24;
-                            $viewBoxHeight = 24;
-                        }
-                    }
-
-                    $viewBoxWH = "$viewBoxWidth $viewBoxHeight";
 
                     // File di output
                     $output_file = $output.'/'.$kebabCaseIconName.'.blade.php';
@@ -192,7 +182,7 @@ class BladeSVGPro extends Command
                     File::append($output_file, "@php\n\$classes = Flux::classes('shrink-0')\n->add(match(\$variant) {\n\t'outline' => '[:where(&)]:size-6',\n\t'solid' => '[:where(&)]:size-6',\n\t'mini' => '[:where(&)]:size-5',\n\t'micro' => '[:where(&)]:size-4',\n});\n@endphp\n\n");
 
                     // Add the content of SVG icon
-                    File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"0 0 $viewBoxWH\" {{ \$attributes->class(\$classes) }} data-flux-icon aria-hidden=\"true\">\n");
+                    File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"$viewBox\" {{ \$attributes->class(\$classes) }} data-flux-icon aria-hidden=\"true\">\n");
                     File::append($output_file, "$svgContent\n</svg>\n");
                 }
 
@@ -227,29 +217,15 @@ class BladeSVGPro extends Command
                     // Read and process the SVG content
                     $svgContent = $this->processSvgContent($svgFile->getPathname());
 
+                    // Get icon viewbox
+                    $viewBox = $this->getViewBox($svgFile->getPathname());
+
                     // Extract width and height dimensions
                     [$width, $height] = $this->extractDimensions($svgFile->getPathname());
 
-                    if ($width !== $height) {
-                        // Rectangle shape?
-                        $viewBoxWidth = $width;
-                        $viewBoxHeight = $height;
-                    } else {
-                        // Square shape?
-                        if ($width < 24 && $height < 24) {
-                            $viewBoxWidth = $width;
-                            $viewBoxHeight = $height;
-                        } else {
-                            $viewBoxWidth = 24;
-                            $viewBoxHeight = 24;
-                        }
-                    }
-
-                    $viewBoxWH = "$viewBoxWidth $viewBoxHeight";
-
                     // Add the case to the Blade file
                     File::append($output_file, "@case('$kebabCaseIconName')\n");
-                    File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"0 0 $viewBoxWH\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
+                    File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"$viewBox\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
                     File::append($output_file, "$svgContent\n</svg>\n");
 
                     // Close the case
@@ -266,6 +242,22 @@ class BladeSVGPro extends Command
             // Close the switch
             File::append($output_file, "@endswitch\n");
         }
+    }
+
+    private function getViewBox($filePath)
+    {
+        // Load the SVG using SimpleXML
+        $svg = simplexml_load_file($filePath);
+
+        $width = $svg['width'];
+        $height = $svg['height'];
+
+        // Load the SVG using SimpleXML
+        if (isset($svg['viewBox'])) {
+            return $svg['viewBox'];
+        }
+
+        return "0 0 $width $height";
     }
 
     private function optimizeSvg(string $filePath, $optimizerChain)
