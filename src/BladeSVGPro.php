@@ -14,26 +14,39 @@ use function Laravel\Prompts\text;
 class BladeSVGPro extends Command
 {
     // The name and description of the command
-    protected $signature = 'blade-svg-pro:convert {--i=} {--o=}';
+    protected $signature = 'blade-svg-pro:convert {--i=} {--o=} {--flux}';
     protected $description = 'Convert SVGs into a Blade component';
 
     protected $file_name;
 
     public function handle()
     {
-        // Input directory path
-        $input = $this->askForInputDirectory();
+        // Check if flux params exist
+        $flux = $this->option('flux');
 
-        // Output directory path
-        $output = $this->askForOutputDirectory();
+        if ($flux) {
+            $input = $this->askForInputDirectory();
 
-        // File name
-        $this->file_name = $this->askForFileName($output);
+            // Flux required path for custom icons: resources/views/flux/icon
+            $output = resource_path('views/flux/icon');
 
-        // Conversion
-        $this->convertSvgToBlade($input, $output, $this->file_name);
+            // Conversion
+            $this->convertSvgToBlade($input, $output, null, true);
+        } else {
+            // Input directory path
+            $input = $this->askForInputDirectory();
 
-        $this->info("Conversion completed!");
+            // Output directory path
+            $output = $this->askForOutputDirectory();
+
+            // File name
+            $this->file_name = $this->askForFileName($output);
+
+            // Conversion
+            $this->convertSvgToBlade($input, $output, $this->file_name);
+        }
+
+        $this->info("\nConversion completed!");
     }
 
     private function askForInputDirectory()
@@ -95,7 +108,7 @@ class BladeSVGPro extends Command
                 default: false,
             );
 
-            if($confirmed) {
+            if ($confirmed) {
                 return "$this->file_name.blade.php";
             } else {
                 $this->askForFileName($output);
@@ -125,76 +138,134 @@ class BladeSVGPro extends Command
         return $value;
     }
 
-    private function convertSvgToBlade($input, $output, $file_name)
+    private function convertSvgToBlade($input, $output, $file_name = null, $flux = false)
     {
         // Create the optimizer
         $optimizerChain = OptimizerChainFactory::create();
 
-        // File di output
-        $output_file = $output.'/'.$this->file_name;
+        $this->info("Start conversion");
 
-        // Initialize the content of the blade file
-        File::put($output_file, "@props(['name' => null, 'default' => 'size-4'])\n@switch(\$name)\n");
+        if ($flux) {
+            // Use a progress bar to show the progress status
+            $this->output->progressStart(count(File::allFiles($input)));
 
-        // Get all SVG files from the directory and subdirectories
-        $svgFiles = File::allFiles($input);
+            foreach (File::allFiles($input) as $svgFile) {
+                if ($svgFile->getExtension() === 'svg') {
+                    // Optimize the SVG file
+                    $this->optimizeSvg($svgFile->getPathname(), $optimizerChain);
 
-        // Use a progress bar to show the progress status
-        $this->output->progressStart(count($svgFiles));
+                    // Get the icon name without extension
+                    $iconName = $svgFile->getFilenameWithoutExtension();
 
-        // Iterate over all SVG files in the directory and subdirectories
-        foreach (File::allFiles($input) as $svgFile) {
-            if ($svgFile->getExtension() === 'svg') {
-                // Optimize the SVG file
-                $this->optimizeSvg($svgFile->getPathname(), $optimizerChain);
+                    // Convert to kebab-case
+                    $kebabCaseIconName = $this->convertToKebabCase($iconName);
 
-                // Get the icon name without extension
-                $iconName = $svgFile->getFilenameWithoutExtension();
+                    // Read and process the SVG content
+                    $svgContent = $this->processSvgContent($svgFile->getPathname());
 
-                // Convert to kebab-case
-                $kebabCaseIconName = $this->convertToKebabCase($iconName);
+                    // Extract width and height dimensions
+                    [$width, $height] = $this->extractDimensions($svgFile->getPathname());
 
-                // Read and process the SVG content
-                $svgContent = $this->processSvgContent($svgFile->getPathname());
-
-                // Extract width and height dimensions
-                [$width, $height] = $this->extractDimensions($svgFile->getPathname());
-
-                if ($width !== $height) {
-                    // Rectangle shape?
-                    $viewBoxWidth = $width;
-                    $viewBoxHeight = $height;
-                } else {
-                    // Square shape?
-                    if ($width < 24 && $height < 24) {
+                    if ($width !== $height) {
+                        // Rectangle shape?
                         $viewBoxWidth = $width;
                         $viewBoxHeight = $height;
                     } else {
-                        $viewBoxWidth = 24;
-                        $viewBoxHeight = 24;
+                        // Square shape?
+                        if ($width < 24 && $height < 24) {
+                            $viewBoxWidth = $width;
+                            $viewBoxHeight = $height;
+                        } else {
+                            $viewBoxWidth = 24;
+                            $viewBoxHeight = 24;
+                        }
                     }
+
+                    $viewBoxWH = "$viewBoxWidth $viewBoxHeight";
+
+                    // File di output
+                    $output_file = $output.'/'.$kebabCaseIconName.'.blade.php';
+
+                    // Initialize the content of the blade file
+                    File::put($output_file, "@php \$attributes = \$unescapedForwardedAttributes ?? \$attributes; @endphp\n\n");
+                    File::append($output_file, "@props([\n\t'variant' => 'outline',\n])\n\n");
+                    File::append($output_file, "@php\n\$classes = Flux::classes('shrink-0')\n->add(match(\$variant) {\n\t'outline' => '[:where(&)]:size-6',\n\t'solid' => '[:where(&)]:size-6',\n\t'mini' => '[:where(&)]:size-5',\n\t'micro' => '[:where(&)]:size-4',\n});\n@endphp\n\n");
+
+                    // Add the content of SVG icon
+                    File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"0 0 $viewBoxWH\" {{ \$attributes->class(\$classes) }} data-flux-icon aria-hidden=\"true\">\n");
+                    File::append($output_file, "$svgContent\n</svg>\n");
                 }
 
-                $viewBoxWH = "$viewBoxWidth $viewBoxHeight";
+                // Advance the progress bar by one step
+                $this->output->progressAdvance();
+            }
+        } else {
+            // File di output
+            $output_file = $output.'/'.$this->file_name;
 
-                // Add the case to the Blade file
-                File::append($output_file, "@case('$kebabCaseIconName')\n");
-                File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"0 0 $viewBoxWH\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
-                File::append($output_file, "$svgContent\n</svg>\n");
+            // Initialize the content of the blade file
+            File::put($output_file, "@props(['name' => null, 'default' => 'size-4'])\n@switch(\$name)\n");
 
-                // Close the case
-                File::append($output_file, "@break\n");
+            // Get all SVG files from the directory and subdirectories
+            $svgFiles = File::allFiles($input);
+
+            // Use a progress bar to show the progress status
+            $this->output->progressStart(count($svgFiles));
+
+            // Iterate over all SVG files in the directory and subdirectories
+            foreach (File::allFiles($input) as $svgFile) {
+                if ($svgFile->getExtension() === 'svg') {
+                    // Optimize the SVG file
+                    $this->optimizeSvg($svgFile->getPathname(), $optimizerChain);
+
+                    // Get the icon name without extension
+                    $iconName = $svgFile->getFilenameWithoutExtension();
+
+                    // Convert to kebab-case
+                    $kebabCaseIconName = $this->convertToKebabCase($iconName);
+
+                    // Read and process the SVG content
+                    $svgContent = $this->processSvgContent($svgFile->getPathname());
+
+                    // Extract width and height dimensions
+                    [$width, $height] = $this->extractDimensions($svgFile->getPathname());
+
+                    if ($width !== $height) {
+                        // Rectangle shape?
+                        $viewBoxWidth = $width;
+                        $viewBoxHeight = $height;
+                    } else {
+                        // Square shape?
+                        if ($width < 24 && $height < 24) {
+                            $viewBoxWidth = $width;
+                            $viewBoxHeight = $height;
+                        } else {
+                            $viewBoxWidth = 24;
+                            $viewBoxHeight = 24;
+                        }
+                    }
+
+                    $viewBoxWH = "$viewBoxWidth $viewBoxHeight";
+
+                    // Add the case to the Blade file
+                    File::append($output_file, "@case('$kebabCaseIconName')\n");
+                    File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"0 0 $viewBoxWH\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
+                    File::append($output_file, "$svgContent\n</svg>\n");
+
+                    // Close the case
+                    File::append($output_file, "@break\n");
+                }
+
+                // Advance the progress bar by one step
+                $this->output->progressAdvance();
             }
 
-            // Advance the progress bar by one step
-            $this->output->progressAdvance();
+            // Close the progress bar
+            $this->output->progressFinish();
+
+            // Close the switch
+            File::append($output_file, "@endswitch\n");
         }
-
-        // Close the progress bar
-        $this->output->progressFinish();
-
-        // Close the switch
-        File::append($output_file, "@endswitch\n");
     }
 
     private function optimizeSvg(string $filePath, $optimizerChain)
