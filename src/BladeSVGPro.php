@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\File;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use Spatie\ImageOptimizer\OptimizerChainFactory;
+use Illuminate\Support\Str;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\suggest;
@@ -14,46 +15,27 @@ use function Laravel\Prompts\text;
 
 class BladeSVGPro extends Command
 {
-    // The name and description of the command
     protected $signature = 'blade-svg-pro:convert {--i=} {--o=} {--flux}';
     protected $description = 'Convert SVGs into a Blade component';
 
-    protected $file_name;
-
     public function handle()
     {
-        // Check if flux params exist
         $flux = $this->option('flux');
 
-        if ($flux) {
-            $input = $this->askForInputDirectory();
+        $input = $this->askForInputDirectory();
+        $output = $flux ? resource_path('views/flux/icon') : $this->askForOutputDirectory();
 
-            // Flux required path for custom icons: resources/views/flux/icon
-            $output = resource_path('views/flux/icon');
+        $type = $flux ? 'multiple' : select(
+            label: 'Do you want to convert icons into a single or multiple files?',
+            options: [
+                'single' => 'Single file',
+                'multiple' => 'Multiple files',
+            ]
+        );
 
-            // Conversion
-            $this->convertSvgToBlade($input, $output, null, true, 'multiple');
-        } else {
-            // Input directory path
-            $input = $this->askForInputDirectory();
+        $file_name = ($type === 'single' && !$flux) ? $this->askForFileName($output) : null;
 
-            // Output directory path
-            $output = $this->askForOutputDirectory();
-
-            $type = select(
-                label: 'Do you want convert icons in a single or multiple files?',
-                options: [
-                    'single' => 'Single file',
-                    'multiple' => 'Multiple files',
-                ]
-            );
-
-            // File name
-            $this->file_name = $type === 'single' ? $this->askForFileName($output) : null;
-
-            // Conversion
-            $this->convertSvgToBlade($input, $output, $this->file_name, false, $type);
-        }
+        $this->convertSvgToBlade($input, $output, $file_name, $flux, $type);
 
         $this->info("\nConversion completed!");
     }
@@ -64,9 +46,10 @@ class BladeSVGPro extends Command
             label: 'Specify the path of the SVG directory',
             required: true
         );
+
         if (!File::isDirectory($input)) {
             $this->error("The directory '$input' does not exist. Please try again");
-            $input = $this->askForInputDirectory();
+            return $this->askForInputDirectory();
         }
 
         return $input;
@@ -77,7 +60,7 @@ class BladeSVGPro extends Command
         $directories = $this->getAllDirectories(resource_path('views'));
 
         $output = $this->option('o') ?? suggest(
-            label: 'Specify the path where to save the file .blade.php',
+            label: 'Specify the path where to save the .blade.php files',
             options: $directories,
             required: true,
         );
@@ -88,225 +71,180 @@ class BladeSVGPro extends Command
     private function getAllDirectories($path)
     {
         $directories = [];
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($path),
-            RecursiveIteratorIterator::SELF_FIRST
-        );
-        foreach ($iterator as $file) {
-            if ($file->isDir() && !$iterator->isDot()) {
-                $directories[] = $file->getPathname();
-            }
+
+        if (!File::isDirectory($path)) {
+            return $directories;
         }
+
+        $items = File::directories($path);
+
+        foreach ($items as $item) {
+            $directories[] = $item;
+            $subDirectories = $this->getAllDirectories($item);
+            $directories = array_merge($directories, $subDirectories);
+        }
+
         return $directories;
     }
 
     private function askForFileName($output)
     {
-        $this->file_name = text(
+        $file_name = text(
             label: 'Specify the name of the file',
             required: true,
-            hint: "The name will convert automatically to kebab-case. (The extension '.blade.php' will be automatically added)",
-            transform: fn(string $value) => str()->kebab($value)
+            hint: "The name will be automatically converted to kebab-case. (The extension '.blade.php' will be automatically added)",
+            transform: fn(string $value) => Str::kebab(preg_replace('/[()]/', '', trim($value)))
         );
 
-        $output_file = "$output/$this->file_name.blade.php";
+        $output_file = "$output/$file_name.blade.php";
 
         if (File::exists($output_file)) {
             $confirmed = confirm(
-                label: "The file '$this->file_name' already exists, do you want to overwrite it?",
+                label: "The file '$file_name' already exists, do you want to overwrite it?",
                 default: false,
             );
 
             if ($confirmed) {
-                return "$this->file_name.blade.php";
+                return "$file_name.blade.php";
             } else {
-                $this->askForFileName($output);
+                return $this->askForFileName($output);
             }
         }
 
-        return "$this->file_name.blade.php";
-    }
-
-    private function convertToKebabCase(string $value): string
-    {
-        // Remove any extra spaces
-        $value = trim($value);
-
-        // Replace all dashes with spaces around them with a single dash without spaces
-        $value = preg_replace('/\s*-\s*/', '-', $value);
-
-        // Remove open and closed parentheses
-        $value = preg_replace('/[()]/', '', $value);
-
-        // Replace all remaining spaces and underscores with a dash
-        $value = preg_replace('/[\s_]+/', '-', $value);
-
-        // Convert everything to lowercase
-        $value = strtolower($value);
-
-        return $value;
+        return "$file_name.blade.php";
     }
 
     private function convertSvgToBlade($input, $output, $file_name = null, $flux = false, $type = 'single')
     {
-        if(!File::isDirectory($output)) {
+        if (!File::isDirectory($output)) {
             File::makeDirectory($output, 0755, true);
         }
 
-        // Create the optimizer
         $optimizerChain = OptimizerChainFactory::create();
 
         $this->info("Start conversion");
 
-        if($type === 'multiple') {
-            // Use a progress bar to show the progress status
-            $this->output->progressStart(count(File::allFiles($input)));
+        $svgFiles = File::allFiles($input);
+        $this->output->progressStart(count($svgFiles));
 
-            foreach (File::allFiles($input) as $svgFile) {
-                if ($svgFile->getExtension() === 'svg') {
-                    // Optimize the SVG file
-                    $this->optimizeSvg($svgFile->getPathname(), $optimizerChain);
+        if ($type === 'multiple') {
+            foreach ($svgFiles as $svgFile) {
+                $data = $this->processSvgFile($svgFile->getPathname(), $optimizerChain);
 
-                    // Get the icon name without extension
-                    $iconName = $svgFile->getFilenameWithoutExtension();
-
-                    // Convert to kebab-case
-                    $kebabCaseIconName = $this->convertToKebabCase($iconName);
-
-                    // Read and process the SVG content
-                    $svgContent = $this->processSvgContent($svgFile->getPathname());
-
-                    // Get icon viewbox
-                    $viewBox = $this->getViewBox($svgFile->getPathname());
-
-                    // Extract width and height dimensions
-                    [$width, $height] = $this->extractDimensions($svgFile->getPathname());
-
-                    // File di output
-                    $output_file = $output.'/'.$kebabCaseIconName.'.blade.php';
-
-                    if($flux) {
-                        // Initialize the content of the blade file
-                        File::put($output_file, "@php \$attributes = \$unescapedForwardedAttributes ?? \$attributes; @endphp\n\n");
-                        File::append($output_file, "@props([\n\t'variant' => 'outline',\n])\n\n");
-                        File::append($output_file, "@php\n\$classes = Flux::classes('shrink-0')\n->add(match(\$variant) {\n\t'outline' => '[:where(&)]:size-6',\n\t'solid' => '[:where(&)]:size-6',\n\t'mini' => '[:where(&)]:size-5',\n\t'micro' => '[:where(&)]:size-4',\n});\n@endphp\n\n");
-
-                        // Add the content of SVG icon
-                        File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"$viewBox\" {{ \$attributes->class(\$classes) }} data-flux-icon aria-hidden=\"true\">\n");
-                        File::append($output_file, "$svgContent\n</svg>\n");
-                    } else {
-                        // Initialize the content of the blade file
-                        File::put($output_file, "@props(['name' => null, 'default' => 'size-4'])\n\n");
-
-                        // Add the case to the Blade file
-                        File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"$viewBox\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
-                        File::append($output_file, "$svgContent\n</svg>\n");
-                    }
+                if ($data) {
+                    $this->writeMultipleFile($output, $data, $flux);
                 }
 
-                // Advance the progress bar by one step
                 $this->output->progressAdvance();
             }
         } else {
-            // File di output
-            $output_file = $output.'/'.$this->file_name;
+            $output_file = $output . '/' . $file_name;
 
-            // Initialize the content of the blade file
-            File::put($output_file, "@props(['name' => null, 'default' => 'size-4'])\n@switch(\$name)\n");
+            $this->initializeSingleOutputFile($output_file);
 
-            // Get all SVG files from the directory and subdirectories
-            $svgFiles = File::allFiles($input);
+            foreach ($svgFiles as $svgFile) {
+                $data = $this->processSvgFile($svgFile->getPathname(), $optimizerChain);
 
-            // Use a progress bar to show the progress status
-            $this->output->progressStart(count($svgFiles));
-
-            // Iterate over all SVG files in the directory and subdirectories
-            foreach (File::allFiles($input) as $svgFile) {
-                if ($svgFile->getExtension() === 'svg') {
-                    // Optimize the SVG file
-                    $this->optimizeSvg($svgFile->getPathname(), $optimizerChain);
-
-                    // Get the icon name without extension
-                    $iconName = $svgFile->getFilenameWithoutExtension();
-
-                    // Convert to kebab-case
-                    $kebabCaseIconName = $this->convertToKebabCase($iconName);
-
-                    // Read and process the SVG content
-                    $svgContent = $this->processSvgContent($svgFile->getPathname());
-
-                    // Get icon viewbox
-                    $viewBox = $this->getViewBox($svgFile->getPathname());
-
-                    // Extract width and height dimensions
-                    [$width, $height] = $this->extractDimensions($svgFile->getPathname());
-
-                    // Add the case to the Blade file
-                    File::append($output_file, "@case('$kebabCaseIconName')\n");
-                    File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" viewBox=\"$viewBox\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
-                    File::append($output_file, "$svgContent\n</svg>\n");
-
-                    // Close the case
-                    File::append($output_file, "@break\n");
+                if ($data) {
+                    $this->appendToSingleOutputFile($output_file, $data);
                 }
 
-                // Advance the progress bar by one step
                 $this->output->progressAdvance();
             }
 
-            // Close the switch
-            File::append($output_file, "@endswitch\n");
+            $this->finalizeSingleOutputFile($output_file);
         }
 
-        // Close the progress bar
         $this->output->progressFinish();
     }
 
-    private function getViewBox($filePath)
+    private function processSvgFile($svgFilePath, $optimizerChain)
     {
-        // Load the SVG using SimpleXML
-        $svg = simplexml_load_file($filePath);
-
-        $width = $svg['width'];
-        $height = $svg['height'];
-
-        // Load the SVG using SimpleXML
-        if (isset($svg['viewBox'])) {
-            return $svg['viewBox'];
+        if (pathinfo($svgFilePath, PATHINFO_EXTENSION) !== 'svg') {
+            return null;
         }
 
-        return "0 0 $width $height";
+        $this->optimizeSvg($svgFilePath, $optimizerChain);
+
+        $svg = simplexml_load_file($svgFilePath);
+
+        $iconName = pathinfo($svgFilePath, PATHINFO_FILENAME);
+        $kebabCaseIconName = $this->convertToKebabCase($iconName);
+
+        $this->normalizeAttributes($svg);
+
+        $svgDimensions = $this->extractDimensionsFromSvg($svg);
+
+        $this->replaceFillAndStroke($svg, $svgDimensions);
+
+        $viewBox = $this->getViewBoxFromSvg($svg);
+        [$width, $height] = [$svgDimensions['width'], $svgDimensions['height']];
+
+        $svgContent = $this->getInnerSvgContent($svg);
+
+        return compact('kebabCaseIconName', 'svgContent', 'viewBox', 'width', 'height');
+    }
+
+    private function writeMultipleFile($output, $data, $flux)
+    {
+        $output_file = $output . '/' . $data['kebabCaseIconName'] . '.blade.php';
+
+        if ($flux) {
+            File::put($output_file, "@php \$attributes = \$unescapedForwardedAttributes ?? \$attributes; @endphp\n\n");
+            File::append($output_file, "@props([\n\t'variant' => 'outline',\n])\n\n");
+            File::append($output_file, "@php\n\$classes = Flux::classes('shrink-0')\n->add(match(\$variant) {\n\t'outline' => '[:where(&)]:size-6',\n\t'solid' => '[:where(&)]:size-6',\n\t'mini' => '[:where(&)]:size-5',\n\t'micro' => '[:where(&)]:size-4',\n});\n@endphp\n\n");
+
+            File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{$data['width']}\" height=\"{$data['height']}\" viewBox=\"{$data['viewBox']}\" {{ \$attributes->class(\$classes) }} data-flux-icon aria-hidden=\"true\">\n");
+            File::append($output_file, "{$data['svgContent']}\n</svg>\n");
+        } else {
+            File::put($output_file, "@props(['name' => null, 'default' => 'size-4'])\n\n");
+            File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{$data['width']}\" height=\"{$data['height']}\" viewBox=\"{$data['viewBox']}\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
+            File::append($output_file, "{$data['svgContent']}\n</svg>\n");
+        }
+    }
+
+    private function initializeSingleOutputFile($output_file)
+    {
+        File::put($output_file, "@props(['name' => null, 'default' => 'size-4'])\n@switch(\$name)\n");
+    }
+
+    private function appendToSingleOutputFile($output_file, $data)
+    {
+        File::append($output_file, "@case('{$data['kebabCaseIconName']}')\n");
+        File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{$data['width']}\" height=\"{$data['height']}\" viewBox=\"{$data['viewBox']}\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
+        File::append($output_file, "{$data['svgContent']}\n</svg>\n");
+        File::append($output_file, "@break\n");
+    }
+
+    private function finalizeSingleOutputFile($output_file)
+    {
+        File::append($output_file, "@endswitch\n");
+    }
+
+    private function getViewBoxFromSvg(\SimpleXMLElement $svg)
+    {
+        if (isset($svg['viewBox'])) {
+            return (string)$svg['viewBox'];
+        } else {
+            $width = isset($svg['width']) ? $this->parseDimension($svg['width']) : 0;
+            $height = isset($svg['height']) ? $this->parseDimension($svg['height']) : 0;
+            return "0 0 $width $height";
+        }
     }
 
     private function optimizeSvg(string $filePath, $optimizerChain)
     {
-        // Execute optimization of the SVG file
         $optimizerChain->optimize($filePath);
     }
 
-    private function processSvgContent(string $filePath): string
+    private function getInnerSvgContent(\SimpleXMLElement $svg)
     {
-        // Load the SVG using SimpleXML
-        $svg = simplexml_load_file($filePath);
-
-        // Remove any extra spaces and normalize attributes
-        $this->normalizeAttributes($svg);
-
-        // Get SVG dimensions
-        $svgDimensions = $this->getSvgDimensions($svg);
-
-        // Replace fill and stroke with appropriate values
-        $this->replaceFillAndStroke($svg, $svgDimensions);
-
-        // Convert SimpleXMLElement to DOMDocument
         $dom = new \DOMDocument();
-        $dom->loadXML($svg->asXML(), LIBXML_NOXMLDECL);
+        $dom->loadXML($svg->asXML(), LIBXML_NOXMLDECL | LIBXML_NOBLANKS);
 
-        // Remove the XML declaration
         $dom->preserveWhiteSpace = false;
         $dom->formatOutput = false;
 
-        // Get the inner content of the <svg> node, excluding the <svg> tag itself
         $innerContent = '';
         foreach ($dom->documentElement->childNodes as $child) {
             $innerContent .= $dom->saveXML($child);
@@ -317,74 +255,45 @@ class BladeSVGPro extends Command
 
     private function normalizeAttributes(\SimpleXMLElement $element)
     {
-        // Remove extra spaces from attributes
         foreach ($element->attributes() as $name => $value) {
-            $value = trim(preg_replace('/\s+/', ' ', (string) $value));
+            $value = trim(preg_replace('/\s+/', ' ', (string)$value));
             $element[$name] = $value;
         }
 
-        // Process children recursively
         foreach ($element->children() as $child) {
             $this->normalizeAttributes($child);
         }
     }
 
-    private function getSvgDimensions(\SimpleXMLElement $svg)
-    {
-        $width = isset($svg['width']) ? $this->parseDimension($svg['width']) : null;
-        $height = isset($svg['height']) ? $this->parseDimension($svg['height']) : null;
-
-        // If width and height are not specified, try to extract from viewBox
-        if (!$width || !$height) {
-            if (isset($svg['viewBox'])) {
-                $viewBox = explode(' ', (string) $svg['viewBox']);
-                if (count($viewBox) === 4) {
-                    $width = $viewBox[2];
-                    $height = $viewBox[3];
-                }
-            }
-        }
-
-        return ['width' => $width, 'height' => $height];
-    }
-
     private function replaceFillAndStroke(\SimpleXMLElement $element, $svgDimensions)
     {
-        // Calculate the bounding box of the element
         $elementDimensions = $this->getElementDimensions($element);
 
-        // Determine if the element is a background
         $isSecondaryElement = $this->isSecondaryElement($elementDimensions, $svgDimensions);
 
-        // Manage fill
         if (isset($element['fill'])) {
-            $fillColor = strtolower(trim((string) $element['fill']));
+            $fillColor = strtolower(trim((string)$element['fill']));
             if ($fillColor !== 'none') {
                 if ($isSecondaryElement) {
-                    // Secondary element
                     $element['fill'] = 'currentColor';
                     $element['opacity'] = '0.3';
                 } else {
-                    // Primary element
                     $element['fill'] = 'currentColor';
                 }
             }
         }
 
-        // Manage stroke
         if (isset($element['stroke'])) {
-            $strokeColor = strtolower(trim((string) $element['stroke']));
+            $strokeColor = strtolower(trim((string)$element['stroke']));
             if ($strokeColor === 'transparent' || $strokeColor === 'rgba(0,0,0,0)') {
                 $element['stroke'] = 'none';
             } elseif ($strokeColor !== 'none') {
-                // Set stroke="currentColor" only if the element is not a background
                 if (!$isSecondaryElement) {
                     $element['stroke'] = 'currentColor';
                 }
             }
         }
 
-        // Process children recursively
         foreach ($element->children() as $child) {
             $this->replaceFillAndStroke($child, $svgDimensions);
         }
@@ -392,13 +301,11 @@ class BladeSVGPro extends Command
 
     private function getElementDimensions(\SimpleXMLElement $element)
     {
-        // Get x, y, width, height attributes
         $x = isset($element['x']) ? $this->parseDimension($element['x']) : 0;
         $y = isset($element['y']) ? $this->parseDimension($element['y']) : 0;
         $width = isset($element['width']) ? $this->parseDimension($element['width']) : null;
         $height = isset($element['height']) ? $this->parseDimension($element['height']) : null;
 
-        // For elements like <circle> and <ellipse>, calculate width and height
         if ($element->getName() === 'circle') {
             $cx = isset($element['cx']) ? $this->parseDimension($element['cx']) : 0;
             $cy = isset($element['cy']) ? $this->parseDimension($element['cy']) : 0;
@@ -417,7 +324,6 @@ class BladeSVGPro extends Command
             $width = $rx * 2;
             $height = $ry * 2;
         } elseif ($element->getName() === 'path') {
-            // For paths, we could use getBBox, but SimpleXML does not support it, return null
             $width = null;
             $height = null;
         }
@@ -432,12 +338,10 @@ class BladeSVGPro extends Command
 
     private function isSecondaryElement($elementDimensions, $svgDimensions)
     {
-        // If we can't determine the element's dimensions, assume it's not a background
         if ($elementDimensions['width'] === null || $elementDimensions['height'] === null) {
             return false;
         }
 
-        // Calculate the coverage percentage relative to the SVG
         $elementArea = $elementDimensions['width'] * $elementDimensions['height'];
         $svgArea = $svgDimensions['width'] * $svgDimensions['height'];
 
@@ -447,12 +351,10 @@ class BladeSVGPro extends Command
 
         $coverage = ($elementArea / $svgArea) * 100;
 
-        // If the element covers more than 90% of the SVG area, consider it a background
         if ($coverage >= 90) {
             return true;
         }
 
-        // Check if the element starts at the origin and has the same dimensions as the SVG
         if (
             $elementDimensions['x'] == 0 &&
             $elementDimensions['y'] == 0 &&
@@ -465,19 +367,14 @@ class BladeSVGPro extends Command
         return false;
     }
 
-    private function extractDimensions(string $filePath)
+    private function extractDimensionsFromSvg(\SimpleXMLElement $svg)
     {
-        // Load the SVG as SimpleXMLElement
-        $svg = simplexml_load_file($filePath);
-
-        // Extract width and height dimensions, handling different units
         $width = isset($svg['width']) ? $this->parseDimension($svg['width']) : null;
         $height = isset($svg['height']) ? $this->parseDimension($svg['height']) : null;
 
-        // If width and height are not specified, try to extract from viewBox
         if (!$width || !$height) {
             if (isset($svg['viewBox'])) {
-                $viewBox = explode(' ', (string) $svg['viewBox']);
+                $viewBox = explode(' ', (string)$svg['viewBox']);
                 if (count($viewBox) === 4) {
                     $width = $viewBox[2];
                     $height = $viewBox[3];
@@ -485,17 +382,22 @@ class BladeSVGPro extends Command
             }
         }
 
-        return [$width, $height];
+        return ['width' => $width, 'height' => $height];
     }
 
     private function parseDimension($dimension)
     {
-        // Remove any measurement units (e.g., "px", "pt", "%")
-        if (preg_match('/^([0-9.]+)(px|pt|%)?$/', (string) $dimension, $matches)) {
+        if (preg_match('/^([0-9.]+)(px|pt|%)?$/', (string)$dimension, $matches)) {
             return floatval($matches[1]);
         }
 
-        // Default value if no match
         return null;
+    }
+
+    private function convertToKebabCase(string $value): string
+    {
+        $value = preg_replace('/[()]/', '', trim($value));
+
+        return Str::kebab($value);
     }
 }
