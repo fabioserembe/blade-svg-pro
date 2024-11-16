@@ -54,6 +54,18 @@ Now you can customise the icon by inserting your preferred Tailwind classes, e.g
    <x-icons name="chevron-left" class="text-red-500 hover:text-blue-500 ..." />
 ```
 
+### Flux support
+You can easily convert the icons for [Flux custom icons](https://fluxui.dev/components/icon#custom-icons) by adding to the `--flux` param to the command like this:
+```bash
+php artisan blade-svg-pro:convert --flux
+```
+or
+```bash
+php artisan blade-svg-pro:convert --i="path/to/svg/directory" --flux
+```
+Using the `--flux` parameter the output directory is automatically set up to `resources/views/flux/icon` as required by the Flux documentation.
+If the path does not exist, it is automatically created.
+
 ### Icon types actually supported
 - Linear
 - Bold
