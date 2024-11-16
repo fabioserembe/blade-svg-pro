@@ -14,7 +14,7 @@ use function Laravel\Prompts\text;
 class BladeSVGPro extends Command
 {
     // The name and description of the command
-    protected $signature = 'blade-svg-pro:convert {--i=} {--o=}';
+    protected $signature = 'blade-svg-pro:convert {--i=} {--o=} {--flux}';
     protected $description = 'Convert SVGs into a Blade component';
 
     protected $file_name;
@@ -26,6 +26,10 @@ class BladeSVGPro extends Command
 
         // Output directory path
         $output = $this->askForOutputDirectory();
+
+        // Check if flux params exist
+        $flux = $this->option('flux');
+        return $flux ? "flux" : "noflux";
 
         // File name
         $this->file_name = $this->askForFileName($output);
