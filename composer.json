@@ -22,8 +22,8 @@
     "illuminate/collections": "^8.0|^9.0|^10.0|^11.0",
     "illuminate/console": "^8.0|^9.0|^10.0|^11.0",
     "illuminate/support": "^8.0|^9.0|^10.0|^11.0",
-    "laravel/prompts": "^0.1.25",
-    "spatie/image-optimizer": "^1.7"
+    "laravel/prompts": "*",
+    "spatie/image-optimizer": "*"
   },
   "require-dev": {
     "phpunit/phpunit": "^9.0"
