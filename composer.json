@@ -1,7 +1,7 @@
 {
   "name": "fabioserembe/blade-svg-pro",
   "description": "A Laravel package to convert (massively and recursively) SVG files in a folder into a single or multiple .blade.php file(s).",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "keywords": [
     "fabioserembe",
     "blade-svg-pro"
