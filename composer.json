@@ -1,7 +1,7 @@
 {
   "name": "fabioserembe/blade-svg-pro",
   "description": "A Laravel package to convert (massively and recursively) SVG files in a folder into a single or multiple .blade.php file(s).",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "keywords": [
     "fabioserembe",
     "blade-svg-pro"
@@ -19,11 +19,11 @@
   "require": {
     "php": "^8.0",
     "ext-simplexml": "*",
-    "illuminate/collections": "^8.0|^9.0|^10.0|^11.0",
-    "illuminate/console": "^8.0|^9.0|^10.0|^11.0",
-    "illuminate/support": "^8.0|^9.0|^10.0|^11.0",
+    "illuminate/collections": "^8.0|^9.0|^10.0|^11.0|^12.0",
+    "illuminate/console": "^8.0|^9.0|^10.0|^11.0|^12.0",
+    "illuminate/support": "^8.0|^9.0|^10.0|^11.0|^12.0",
     "laravel/prompts": "*",
-    "spatie/image-optimizer": "*"
+    "spatie/image-optimizer": "^1.0"
   },
   "require-dev": {
     "phpunit/phpunit": "^9.0"
