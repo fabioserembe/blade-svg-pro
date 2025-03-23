@@ -47,6 +47,9 @@ class BladeSVGPro extends Command
             required: true
         );
 
+        // Rimuovi eventuali backslash di escape prima degli spazi
+        $input = str_replace('\ ', ' ', $input);
+
         if (!File::isDirectory($input)) {
             $this->error("The directory '$input' does not exist. Please try again");
             return $this->askForInputDirectory();
@@ -175,6 +178,21 @@ class BladeSVGPro extends Command
 
         $svgDimensions = $this->extractDimensionsFromSvg($svg);
 
+        // Raccogliere gli attributi da preservare
+        $preserveAttributes = ['fill', 'stroke-width', 'overflow'];
+        $preservedAttributesString = '';
+
+        foreach ($preserveAttributes as $attr) {
+            if (isset($svg[$attr])) {
+                $value = (string)$svg[$attr];
+                // Preserva solo fill="none", altri valori di fill verranno gestiti da replaceFillAndStroke
+                if ($attr === 'fill' && $value !== 'none') {
+                    continue;
+                }
+                $preservedAttributesString .= " $attr=\"$value\"";
+            }
+        }
+
         $this->replaceFillAndStroke($svg, $svgDimensions);
 
         $viewBox = $this->getViewBoxFromSvg($svg);
@@ -182,7 +200,7 @@ class BladeSVGPro extends Command
 
         $svgContent = $this->getInnerSvgContent($svg);
 
-        return compact('kebabCaseIconName', 'svgContent', 'viewBox', 'width', 'height');
+        return compact('kebabCaseIconName', 'svgContent', 'viewBox', 'width', 'height', 'preservedAttributesString');
     }
 
     private function writeMultipleFile($output, $data, $flux)
@@ -194,14 +212,15 @@ class BladeSVGPro extends Command
             File::append($output_file, "@props([\n\t'variant' => 'outline',\n])\n\n");
             File::append($output_file, "@php\n\$classes = Flux::classes('shrink-0')\n->add(match(\$variant) {\n\t'outline' => '[:where(&)]:size-6',\n\t'solid' => '[:where(&)]:size-6',\n\t'mini' => '[:where(&)]:size-5',\n\t'micro' => '[:where(&)]:size-4',\n});\n@endphp\n\n");
 
-            File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{$data['width']}\" height=\"{$data['height']}\" viewBox=\"{$data['viewBox']}\" {{ \$attributes->class(\$classes) }} data-flux-icon aria-hidden=\"true\">\n");
+            File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{$data['width']}\" height=\"{$data['height']}\"" . $data['preservedAttributesString'] . " viewBox=\"{$data['viewBox']}\" {{ \$attributes->class(\$classes) }} data-flux-icon aria-hidden=\"true\">\n");
             File::append($output_file, "{$data['svgContent']}\n</svg>\n");
         } else {
             File::put($output_file, "@props(['name' => null, 'default' => 'size-4'])\n\n");
-            File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{$data['width']}\" height=\"{$data['height']}\" viewBox=\"{$data['viewBox']}\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
+            File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{$data['width']}\" height=\"{$data['height']}\"" . $data['preservedAttributesString'] . " viewBox=\"{$data['viewBox']}\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
             File::append($output_file, "{$data['svgContent']}\n</svg>\n");
         }
     }
+
 
     private function initializeSingleOutputFile($output_file)
     {
@@ -211,7 +230,7 @@ class BladeSVGPro extends Command
     private function appendToSingleOutputFile($output_file, $data)
     {
         File::append($output_file, "@case('{$data['kebabCaseIconName']}')\n");
-        File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{$data['width']}\" height=\"{$data['height']}\" viewBox=\"{$data['viewBox']}\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
+        File::append($output_file, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{$data['width']}\" height=\"{$data['height']}\"" . $data['preservedAttributesString'] . " viewBox=\"{$data['viewBox']}\" {{ \$attributes->merge(['class' => \$default]) }}>\n");
         File::append($output_file, "{$data['svgContent']}\n</svg>\n");
         File::append($output_file, "@break\n");
     }
