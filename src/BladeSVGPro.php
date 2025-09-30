@@ -2,12 +2,13 @@
 
 namespace FabioSerembe\BladeSVGPro;
 
+use DOMDocument;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
-use Spatie\ImageOptimizer\OptimizerChainFactory;
 use Illuminate\Support\Str;
+use RuntimeException;
+use SimpleXMLElement;
+use Spatie\ImageOptimizer\OptimizerChainFactory;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\suggest;
@@ -40,14 +41,13 @@ class BladeSVGPro extends Command
         $this->info("\nConversion completed!");
     }
 
-    private function askForInputDirectory()
+    private function askForInputDirectory(): string
     {
         $input = $this->option('i') ?? text(
             label: 'Specify the path of the SVG directory',
             required: true
         );
 
-        // Rimuovi eventuali backslash di escape prima degli spazi
         $input = str_replace('\ ', ' ', $input);
 
         if (!File::isDirectory($input)) {
@@ -58,39 +58,35 @@ class BladeSVGPro extends Command
         return $input;
     }
 
-    private function askForOutputDirectory()
+    private function askForOutputDirectory(): string
     {
         $directories = $this->getAllDirectories(resource_path('views'));
 
-        $output = $this->option('o') ?? suggest(
+        return $this->option('o') ?? suggest(
             label: 'Specify the path where to save the .blade.php files',
             options: $directories,
             required: true,
         );
-
-        return $output;
     }
 
-    private function getAllDirectories($path)
+    private function getAllDirectories(string $path): array
     {
-        $directories = [];
-
         if (!File::isDirectory($path)) {
-            return $directories;
+            return [];
         }
 
+        $directories = [];
         $items = File::directories($path);
 
         foreach ($items as $item) {
             $directories[] = $item;
-            $subDirectories = $this->getAllDirectories($item);
-            $directories = array_merge($directories, $subDirectories);
+            $directories = array_merge($directories, $this->getAllDirectories($item));
         }
 
         return $directories;
     }
 
-    private function askForFileName($output)
+    private function askForFileName(string $output): string
     {
         $file_name = text(
             label: 'Specify the name of the file',
@@ -107,9 +103,7 @@ class BladeSVGPro extends Command
                 default: false,
             );
 
-            if ($confirmed) {
-                return "$file_name.blade.php";
-            } else {
+            if (!$confirmed) {
                 return $this->askForFileName($output);
             }
         }
@@ -117,7 +111,7 @@ class BladeSVGPro extends Command
         return "$file_name.blade.php";
     }
 
-    private function convertSvgToBlade($input, $output, $file_name = null, $flux = false, $type = 'single')
+    private function convertSvgToBlade(string $input, string $output, ?string $file_name = null, bool $flux = false, string $type = 'single'): void
     {
         if (!File::isDirectory($output)) {
             File::makeDirectory($output, 0755, true);
@@ -240,7 +234,7 @@ class BladeSVGPro extends Command
         File::append($output_file, "@endswitch\n");
     }
 
-    private function getViewBoxFromSvg(\SimpleXMLElement $svg)
+    private function getViewBoxFromSvg(SimpleXMLElement $svg): string
     {
         if (isset($svg['viewBox'])) {
             return (string)$svg['viewBox'];
@@ -251,14 +245,14 @@ class BladeSVGPro extends Command
         }
     }
 
-    private function optimizeSvg(string $filePath, $optimizerChain)
+    private function optimizeSvg(string $filePath, $optimizerChain): void
     {
         $optimizerChain->optimize($filePath);
     }
 
-    private function getInnerSvgContent(\SimpleXMLElement $svg)
+    private function getInnerSvgContent(SimpleXMLElement $svg): string
     {
-        $dom = new \DOMDocument();
+        $dom = new DOMDocument();
         $dom->loadXML($svg->asXML(), LIBXML_NOXMLDECL | LIBXML_NOBLANKS);
 
         $dom->preserveWhiteSpace = false;
@@ -272,7 +266,7 @@ class BladeSVGPro extends Command
         return $innerContent;
     }
 
-    private function normalizeAttributes(\SimpleXMLElement $element)
+    private function normalizeAttributes(SimpleXMLElement $element): void
     {
         foreach ($element->attributes() as $name => $value) {
             $value = trim(preg_replace('/\s+/', ' ', (string)$value));
@@ -284,7 +278,7 @@ class BladeSVGPro extends Command
         }
     }
 
-    private function replaceFillAndStroke(\SimpleXMLElement $element, $svgDimensions)
+    private function replaceFillAndStroke(SimpleXMLElement $element, array $svgDimensions): void
     {
         $elementDimensions = $this->getElementDimensions($element);
 
@@ -318,7 +312,7 @@ class BladeSVGPro extends Command
         }
     }
 
-    private function getElementDimensions(\SimpleXMLElement $element)
+    private function getElementDimensions(SimpleXMLElement $element): array
     {
         $x = isset($element['x']) ? $this->parseDimension($element['x']) : 0;
         $y = isset($element['y']) ? $this->parseDimension($element['y']) : 0;
@@ -355,7 +349,7 @@ class BladeSVGPro extends Command
         ];
     }
 
-    private function isSecondaryElement($elementDimensions, $svgDimensions)
+    private function isSecondaryElement(array $elementDimensions, array $svgDimensions): bool
     {
         if ($elementDimensions['width'] === null || $elementDimensions['height'] === null) {
             return false;
@@ -386,7 +380,7 @@ class BladeSVGPro extends Command
         return false;
     }
 
-    private function extractDimensionsFromSvg(\SimpleXMLElement $svg)
+    private function extractDimensionsFromSvg(SimpleXMLElement $svg): array
     {
         $width = isset($svg['width']) ? $this->parseDimension($svg['width']) : null;
         $height = isset($svg['height']) ? $this->parseDimension($svg['height']) : null;
@@ -404,7 +398,7 @@ class BladeSVGPro extends Command
         return ['width' => $width, 'height' => $height];
     }
 
-    private function parseDimension($dimension)
+    private function parseDimension($dimension): ?float
     {
         if (preg_match('/^([0-9.]+)(px|pt|%)?$/', (string)$dimension, $matches)) {
             return floatval($matches[1]);
