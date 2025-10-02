@@ -39,6 +39,7 @@ php artisan blade-svg-pro:convert --i="path/to/svg/directory" --o="path/to/outpu
 - `--o`: Specifies the path to the folder where the generated .blade.php files will be saved.
 - `--flux`: Enables support for custom icons compatible with the Flux package.
 - `--inline`: Enables inline SVG conversion mode, allowing you to paste SVG code directly instead of using files.
+- `--preserve-contrast`: Manually forces preservation of white colors for contrast elements (auto-detected by default).
 
 ---
 #### Inline SVG Conversion
@@ -165,11 +166,46 @@ $classes = Flux::classes('shrink-0')
 ```
 
 ___
+### Smart White Color Preservation
+BladeSVGPro automatically detects and preserves white colors used for contrast in solid icons (e.g., checkmarks on shields, crosses on badges).
+
+**How it works:**
+- The converter automatically scans SVG files for white colors (`white`, `#fff`, `#ffffff`)
+- When detected, these colors are preserved instead of being converted to `currentColor`
+- This ensures solid icons with contrast elements display correctly
+
+**Example:**
+```svg
+<!-- Original SVG with white stroke for contrast -->
+<svg>
+  <path fill="currentColor" d="...shield path..." />
+  <path fill="none" stroke="white" d="...checkmark path..." />
+</svg>
+```
+
+After conversion, the white stroke is automatically preserved:
+```php
+<svg>
+  <path fill="currentColor" d="...shield path..." />
+  <path fill="none" stroke="white" d="...checkmark path..." />
+</svg>
+```
+
+**Manual override (optional):**
+If you need to force preservation of white colors, use the `--preserve-contrast` flag:
+```bash
+php artisan blade-svg-pro:convert --inline --flux --preserve-contrast
+```
+
+**Note:** This feature works automatically for both file-based and inline conversions.
+
+___
 ### Currently supported icon types
 - Linear
 - Bold
 - Duotone
 - Bulk
+- Solid (with automatic white contrast preservation)
 
 ---
 ## Issues and bugs

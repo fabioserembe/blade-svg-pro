@@ -17,7 +17,7 @@ use function Laravel\Prompts\textarea;
 
 class BladeSVGPro extends Command
 {
-    protected $signature = 'blade-svg-pro:convert {--i=} {--o=} {--flux} {--inline}';
+    protected $signature = 'blade-svg-pro:convert {--i=} {--o=} {--flux} {--inline} {--preserve-contrast}';
     protected $description = 'Convert SVGs into a Blade component';
 
     public function handle()
@@ -168,8 +168,6 @@ class BladeSVGPro extends Command
         }
 
         $this->optimizeSvg($svgFilePath, $optimizerChain);
-
-        // Normalizza il viewBox a 24x24
         $this->normalizeViewBoxTo24x24($svgFilePath);
 
         $svg = simplexml_load_file($svgFilePath);
@@ -181,14 +179,12 @@ class BladeSVGPro extends Command
 
         $svgDimensions = $this->extractDimensionsFromSvg($svg);
 
-        // Raccogliere gli attributi da preservare
         $preserveAttributes = ['fill', 'stroke-width', 'overflow'];
         $preservedAttributesString = '';
 
         foreach ($preserveAttributes as $attr) {
             if (isset($svg[$attr])) {
                 $value = (string)$svg[$attr];
-                // Preserva solo fill="none", altri valori di fill verranno gestiti da replaceFillAndStroke
                 if ($attr === 'fill' && $value !== 'none') {
                     continue;
                 }
@@ -196,7 +192,8 @@ class BladeSVGPro extends Command
             }
         }
 
-        $this->replaceFillAndStroke($svg, $svgDimensions);
+        $preserveContrast = $this->option('preserve-contrast') || $this->hasWhiteColorsForContrast($svg);
+        $this->replaceFillAndStroke($svg, $svgDimensions, false, $preserveContrast);
 
         $viewBox = $this->getViewBoxFromSvg($svg);
         [$width, $height] = [$svgDimensions['width'], $svgDimensions['height']];
@@ -287,31 +284,32 @@ class BladeSVGPro extends Command
         }
     }
 
-    private function replaceFillAndStroke(SimpleXMLElement $element, array $svgDimensions, bool $parentHasFillNone = false): void
+    private function replaceFillAndStroke(SimpleXMLElement $element, array $svgDimensions, bool $parentHasFillNone = false, bool $preserveContrast = false): void
     {
         $elementDimensions = $this->getElementDimensions($element);
-
         $isSecondaryElement = $this->isSecondaryElement($elementDimensions, $svgDimensions);
-
-        // Controlla se questo elemento ha fill="none"
         $currentHasFillNone = isset($element['fill']) && strtolower(trim((string)$element['fill'])) === 'none';
 
-        // Gestione fill
+        $isWhiteColor = function($color) {
+            $color = strtolower(trim($color));
+            return in_array($color, ['white', '#fff', '#ffffff', 'rgb(255,255,255)', 'rgba(255,255,255,1)']);
+        };
+
         if (isset($element['fill'])) {
             $fillColor = strtolower(trim((string)$element['fill']));
             if ($fillColor !== 'none') {
-                if ($isSecondaryElement) {
-                    $element['fill'] = 'currentColor';
-                    $element['opacity'] = '0.3';
+                if ($preserveContrast && $isWhiteColor($fillColor)) {
+                    // Keep white color for contrast
                 } else {
-                    $element['fill'] = 'currentColor';
+                    if ($isSecondaryElement) {
+                        $element['fill'] = 'currentColor';
+                        $element['opacity'] = '0.3';
+                    } else {
+                        $element['fill'] = 'currentColor';
+                    }
                 }
             }
         } else {
-            // Se fill non è presente, aggiungiamo currentColor SOLO se:
-            // 1. Il parent non ha fill="none"
-            // 2. L'elemento non ha stroke (se ha stroke, è probabilmente un'icona outline)
-            // 3. Non è un elemento che tipicamente non usa fill
             $elementName = $element->getName();
             $hasStroke = isset($element['stroke']);
 
@@ -330,14 +328,18 @@ class BladeSVGPro extends Command
             if ($strokeColor === 'transparent' || $strokeColor === 'rgba(0,0,0,0)') {
                 $element['stroke'] = 'none';
             } elseif ($strokeColor !== 'none') {
-                if (!$isSecondaryElement) {
-                    $element['stroke'] = 'currentColor';
+                if ($preserveContrast && $isWhiteColor($strokeColor)) {
+                    // Keep white color for contrast
+                } else {
+                    if (!$isSecondaryElement) {
+                        $element['stroke'] = 'currentColor';
+                    }
                 }
             }
         }
 
         foreach ($element->children() as $child) {
-            $this->replaceFillAndStroke($child, $svgDimensions, $currentHasFillNone || $parentHasFillNone);
+            $this->replaceFillAndStroke($child, $svgDimensions, $currentHasFillNone || $parentHasFillNone, $preserveContrast);
         }
     }
 
@@ -443,6 +445,30 @@ class BladeSVGPro extends Command
         return Str::kebab($value);
     }
 
+    private function hasWhiteColorsForContrast(SimpleXMLElement $element): bool
+    {
+        $isWhiteColor = function($color) {
+            $color = strtolower(trim($color));
+            return in_array($color, ['white', '#fff', '#ffffff', 'rgb(255,255,255)', 'rgba(255,255,255,1)']);
+        };
+
+        if (isset($element['fill']) && $isWhiteColor((string)$element['fill'])) {
+            return true;
+        }
+
+        if (isset($element['stroke']) && $isWhiteColor((string)$element['stroke'])) {
+            return true;
+        }
+
+        foreach ($element->children() as $child) {
+            if ($this->hasWhiteColorsForContrast($child)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function normalizeViewBoxTo24x24(string $svgFilePath): void
     {
         $svg = simplexml_load_file($svgFilePath);
@@ -456,34 +482,24 @@ class BladeSVGPro extends Command
 
         [$minX, $minY, $width, $height] = $viewBoxParts;
 
-        // Se è già 24x24, non fare nulla
         if ($width == 24 && $height == 24 && $minX == 0 && $minY == 0) {
             return;
         }
 
-        // Calcola il fattore di scala per riempire lo spazio 24x24
         $scale = 24 / max($width, $height);
-
-        // Calcola le nuove dimensioni scalate
         $scaledWidth = $width * $scale;
         $scaledHeight = $height * $scale;
-
-        // Calcola l'offset per centrare (se l'icona non è quadrata)
         $offsetX = (24 - $scaledWidth) / 2;
         $offsetY = (24 - $scaledHeight) / 2;
 
-        // Usa DOMDocument per manipolare l'SVG
         $dom = new DOMDocument();
         $dom->loadXML($svg->asXML());
-
         $svgElement = $dom->documentElement;
 
-        // Crea un nuovo gruppo con la trasformazione
         $group = $dom->createElement('g');
         $transformValue = "translate($offsetX $offsetY) scale($scale)";
         $group->setAttribute('transform', $transformValue);
 
-        // Sposta tutti i children dentro il gruppo
         $children = [];
         foreach ($svgElement->childNodes as $child) {
             if ($child->nodeType === XML_ELEMENT_NODE) {
@@ -497,13 +513,9 @@ class BladeSVGPro extends Command
         }
 
         $svgElement->appendChild($group);
-
-        // Aggiorna gli attributi SVG
         $svgElement->setAttribute('viewBox', '0 0 24 24');
         $svgElement->setAttribute('width', '24');
         $svgElement->setAttribute('height', '24');
-
-        // Salva il file modificato
         $dom->save($svgFilePath);
     }
 
@@ -568,8 +580,6 @@ class BladeSVGPro extends Command
 
             $optimizerChain = OptimizerChainFactory::create();
             $this->optimizeSvg($tempFile, $optimizerChain);
-
-            // Normalizza il viewBox a 24x24
             $this->normalizeViewBoxTo24x24($tempFile);
 
             $svg = simplexml_load_file($tempFile);
@@ -579,9 +589,7 @@ class BladeSVGPro extends Command
             }
 
             $kebabCaseIconName = $this->convertToKebabCase($iconName);
-
             $this->normalizeAttributes($svg);
-
             $svgDimensions = $this->extractDimensionsFromSvg($svg);
 
             $preserveAttributes = ['fill', 'stroke-width', 'overflow'];
@@ -597,7 +605,8 @@ class BladeSVGPro extends Command
                 }
             }
 
-            $this->replaceFillAndStroke($svg, $svgDimensions);
+            $preserveContrast = $this->option('preserve-contrast') || $this->hasWhiteColorsForContrast($svg);
+            $this->replaceFillAndStroke($svg, $svgDimensions, false, $preserveContrast);
 
             $viewBox = $this->getViewBoxFromSvg($svg);
             [$width, $height] = [$svgDimensions['width'], $svgDimensions['height']];
