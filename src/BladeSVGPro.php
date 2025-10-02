@@ -512,7 +512,7 @@ class BladeSVGPro extends Command
         $svgContent = $this->option('i') ?? textarea(
             label: 'Paste the SVG code',
             required: true,
-            hint: 'Press Ctrl+D (or Cmd+D on Mac) when finished'
+            hint: 'Press Ctrl+D when finished'
         );
 
         $output = $flux ? resource_path('views/flux/icon') : $this->askForOutputDirectory();

@@ -46,7 +46,7 @@ Convert SVG code directly without needing a file by using the `--inline` option:
 ```bash
 php artisan blade-svg-pro:convert --inline
 ```
-When prompted, paste your SVG code and press **Ctrl+D** (or **Cmd+D** on Mac) to finish.
+When prompted, paste your SVG code and press **Ctrl+D** to finish.
 
 You can also pass the SVG code directly via the `--i` option:
 ```bash
