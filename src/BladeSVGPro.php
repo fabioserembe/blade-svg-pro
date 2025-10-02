@@ -13,32 +13,38 @@ use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\suggest;
 use function Laravel\Prompts\text;
+use function Laravel\Prompts\textarea;
 
 class BladeSVGPro extends Command
 {
-    protected $signature = 'blade-svg-pro:convert {--i=} {--o=} {--flux}';
+    protected $signature = 'blade-svg-pro:convert {--i=} {--o=} {--flux} {--inline}';
     protected $description = 'Convert SVGs into a Blade component';
 
     public function handle()
     {
         $flux = $this->option('flux');
+        $inline = $this->option('inline');
 
-        $input = $this->askForInputDirectory();
-        $output = $flux ? resource_path('views/flux/icon') : $this->askForOutputDirectory();
+        if ($inline) {
+            $this->handleInlineConversion($flux);
+        } else {
+            $input = $this->askForInputDirectory();
+            $output = $flux ? resource_path('views/flux/icon') : $this->askForOutputDirectory();
 
-        $type = $flux ? 'multiple' : select(
-            label: 'Do you want to convert icons into a single or multiple files?',
-            options: [
-                'single' => 'Single file',
-                'multiple' => 'Multiple files',
-            ]
-        );
+            $type = $flux ? 'multiple' : select(
+                label: 'Do you want to convert icons into a single or multiple files?',
+                options: [
+                    'single' => 'Single file',
+                    'multiple' => 'Multiple files',
+                ]
+            );
 
-        $file_name = ($type === 'single' && !$flux) ? $this->askForFileName($output) : null;
+            $file_name = ($type === 'single' && !$flux) ? $this->askForFileName($output) : null;
 
-        $this->convertSvgToBlade($input, $output, $file_name, $flux, $type);
+            $this->convertSvgToBlade($input, $output, $file_name, $flux, $type);
 
-        $this->info("\nConversion completed!");
+            $this->info("\nConversion completed!");
+        }
     }
 
     private function askForInputDirectory(): string
@@ -163,6 +169,9 @@ class BladeSVGPro extends Command
 
         $this->optimizeSvg($svgFilePath, $optimizerChain);
 
+        // Normalizza il viewBox a 24x24
+        $this->normalizeViewBoxTo24x24($svgFilePath);
+
         $svg = simplexml_load_file($svgFilePath);
 
         $iconName = pathinfo($svgFilePath, PATHINFO_FILENAME);
@@ -278,15 +287,35 @@ class BladeSVGPro extends Command
         }
     }
 
-    private function replaceFillAndStroke(SimpleXMLElement $element, array $svgDimensions): void
+    private function replaceFillAndStroke(SimpleXMLElement $element, array $svgDimensions, bool $parentHasFillNone = false): void
     {
         $elementDimensions = $this->getElementDimensions($element);
 
         $isSecondaryElement = $this->isSecondaryElement($elementDimensions, $svgDimensions);
 
+        // Controlla se questo elemento ha fill="none"
+        $currentHasFillNone = isset($element['fill']) && strtolower(trim((string)$element['fill'])) === 'none';
+
+        // Gestione fill
         if (isset($element['fill'])) {
             $fillColor = strtolower(trim((string)$element['fill']));
             if ($fillColor !== 'none') {
+                if ($isSecondaryElement) {
+                    $element['fill'] = 'currentColor';
+                    $element['opacity'] = '0.3';
+                } else {
+                    $element['fill'] = 'currentColor';
+                }
+            }
+        } else {
+            // Se fill non è presente, aggiungiamo currentColor SOLO se:
+            // 1. Il parent non ha fill="none"
+            // 2. L'elemento non ha stroke (se ha stroke, è probabilmente un'icona outline)
+            // 3. Non è un elemento che tipicamente non usa fill
+            $elementName = $element->getName();
+            $hasStroke = isset($element['stroke']);
+
+            if (!$parentHasFillNone && !$hasStroke && !in_array($elementName, ['defs', 'clipPath', 'mask', 'pattern', 'linearGradient', 'radialGradient', 'filter', 'g'])) {
                 if ($isSecondaryElement) {
                     $element['fill'] = 'currentColor';
                     $element['opacity'] = '0.3';
@@ -308,7 +337,7 @@ class BladeSVGPro extends Command
         }
 
         foreach ($element->children() as $child) {
-            $this->replaceFillAndStroke($child, $svgDimensions);
+            $this->replaceFillAndStroke($child, $svgDimensions, $currentHasFillNone || $parentHasFillNone);
         }
     }
 
@@ -412,5 +441,174 @@ class BladeSVGPro extends Command
         $value = preg_replace('/[()]/', '', trim($value));
 
         return Str::kebab($value);
+    }
+
+    private function normalizeViewBoxTo24x24(string $svgFilePath): void
+    {
+        $svg = simplexml_load_file($svgFilePath);
+
+        $currentViewBox = $this->getViewBoxFromSvg($svg);
+        $viewBoxParts = array_map('floatval', explode(' ', $currentViewBox));
+
+        if (count($viewBoxParts) !== 4) {
+            return;
+        }
+
+        [$minX, $minY, $width, $height] = $viewBoxParts;
+
+        // Se è già 24x24, non fare nulla
+        if ($width == 24 && $height == 24 && $minX == 0 && $minY == 0) {
+            return;
+        }
+
+        // Calcola il fattore di scala per riempire lo spazio 24x24
+        $scale = 24 / max($width, $height);
+
+        // Calcola le nuove dimensioni scalate
+        $scaledWidth = $width * $scale;
+        $scaledHeight = $height * $scale;
+
+        // Calcola l'offset per centrare (se l'icona non è quadrata)
+        $offsetX = (24 - $scaledWidth) / 2;
+        $offsetY = (24 - $scaledHeight) / 2;
+
+        // Usa DOMDocument per manipolare l'SVG
+        $dom = new DOMDocument();
+        $dom->loadXML($svg->asXML());
+
+        $svgElement = $dom->documentElement;
+
+        // Crea un nuovo gruppo con la trasformazione
+        $group = $dom->createElement('g');
+        $transformValue = "translate($offsetX $offsetY) scale($scale)";
+        $group->setAttribute('transform', $transformValue);
+
+        // Sposta tutti i children dentro il gruppo
+        $children = [];
+        foreach ($svgElement->childNodes as $child) {
+            if ($child->nodeType === XML_ELEMENT_NODE) {
+                $children[] = $child;
+            }
+        }
+
+        foreach ($children as $child) {
+            $svgElement->removeChild($child);
+            $group->appendChild($child);
+        }
+
+        $svgElement->appendChild($group);
+
+        // Aggiorna gli attributi SVG
+        $svgElement->setAttribute('viewBox', '0 0 24 24');
+        $svgElement->setAttribute('width', '24');
+        $svgElement->setAttribute('height', '24');
+
+        // Salva il file modificato
+        $dom->save($svgFilePath);
+    }
+
+    private function handleInlineConversion(bool $flux): void
+    {
+        $svgContent = $this->option('i') ?? textarea(
+            label: 'Paste the SVG code',
+            required: true,
+            hint: 'Press Ctrl+D (or Cmd+D on Mac) when finished'
+        );
+
+        $output = $flux ? resource_path('views/flux/icon') : $this->askForOutputDirectory();
+
+        $type = $flux ? 'multiple' : select(
+            label: 'Do you want to convert the icon into a single or multiple files?',
+            options: [
+                'single' => 'Single file',
+                'multiple' => 'Multiple files',
+            ]
+        );
+
+        $iconName = text(
+            label: 'Specify the name of the icon',
+            required: true,
+            hint: 'The name will be automatically converted to kebab-case'
+        );
+
+        $kebabCaseIconName = $this->convertToKebabCase($iconName);
+
+        if (!File::isDirectory($output)) {
+            File::makeDirectory($output, 0755, true);
+        }
+
+        $this->info("Start conversion");
+
+        $data = $this->processInlineSvg($svgContent, $kebabCaseIconName);
+
+        if ($data) {
+            if ($type === 'multiple') {
+                $this->writeMultipleFile($output, $data, $flux);
+            } else {
+                $file_name = $this->askForFileName($output);
+                $output_file = $output . '/' . $file_name;
+
+                $this->initializeSingleOutputFile($output_file);
+                $this->appendToSingleOutputFile($output_file, $data);
+                $this->finalizeSingleOutputFile($output_file);
+            }
+
+            $this->info("\nConversion completed!");
+        } else {
+            $this->error("\nFailed to process the SVG content.");
+        }
+    }
+
+    private function processInlineSvg(string $svgContent, string $iconName)
+    {
+        $tempFile = sys_get_temp_dir() . '/' . uniqid('svg_') . '.svg';
+
+        try {
+            File::put($tempFile, $svgContent);
+
+            $optimizerChain = OptimizerChainFactory::create();
+            $this->optimizeSvg($tempFile, $optimizerChain);
+
+            // Normalizza il viewBox a 24x24
+            $this->normalizeViewBoxTo24x24($tempFile);
+
+            $svg = simplexml_load_file($tempFile);
+
+            if (!$svg) {
+                return null;
+            }
+
+            $kebabCaseIconName = $this->convertToKebabCase($iconName);
+
+            $this->normalizeAttributes($svg);
+
+            $svgDimensions = $this->extractDimensionsFromSvg($svg);
+
+            $preserveAttributes = ['fill', 'stroke-width', 'overflow'];
+            $preservedAttributesString = '';
+
+            foreach ($preserveAttributes as $attr) {
+                if (isset($svg[$attr])) {
+                    $value = (string)$svg[$attr];
+                    if ($attr === 'fill' && $value !== 'none') {
+                        continue;
+                    }
+                    $preservedAttributesString .= " $attr=\"$value\"";
+                }
+            }
+
+            $this->replaceFillAndStroke($svg, $svgDimensions);
+
+            $viewBox = $this->getViewBoxFromSvg($svg);
+            [$width, $height] = [$svgDimensions['width'], $svgDimensions['height']];
+
+            $svgContent = $this->getInnerSvgContent($svg);
+
+            return compact('kebabCaseIconName', 'svgContent', 'viewBox', 'width', 'height', 'preservedAttributesString');
+        } finally {
+            if (File::exists($tempFile)) {
+                File::delete($tempFile);
+            }
+        }
     }
 }
