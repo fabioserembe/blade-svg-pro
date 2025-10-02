@@ -35,9 +35,34 @@ You can specify the input and output directories using the `--i` and `--o` optio
 php artisan blade-svg-pro:convert --i="path/to/svg/directory" --o="path/to/output/directory"
 ```
 #### Available Options
-- `--i`: Specifies the path to the folder containing the SVGs to be converted.
-- `--o`:Specifies the path to the folder where the generated .blade.php files will be saved.
+- `--i`: Specifies the path to the folder containing the SVGs to be converted (or SVG code when used with `--inline`).
+- `--o`: Specifies the path to the folder where the generated .blade.php files will be saved.
 - `--flux`: Enables support for custom icons compatible with the Flux package.
+- `--inline`: Enables inline SVG conversion mode, allowing you to paste SVG code directly instead of using files.
+
+---
+#### Inline SVG Conversion
+Convert SVG code directly without needing a file by using the `--inline` option:
+```bash
+php artisan blade-svg-pro:convert --inline
+```
+When prompted, paste your SVG code and press **Ctrl+D** (or **Cmd+D** on Mac) to finish.
+
+You can also pass the SVG code directly via the `--i` option:
+```bash
+php artisan blade-svg-pro:convert --inline --i='<svg>...</svg>'
+```
+
+**Features**:
+- Works with both standard and `--flux` modes
+- Automatically normalizes viewBox to 24x24 standard size
+- Supports multi-line SVG code via textarea prompt
+- Applies the same optimizations and transformations as file-based conversion
+
+**Example with Flux**:
+```bash
+php artisan blade-svg-pro:convert --inline --flux
+```
 
 ---
 #### Flux support

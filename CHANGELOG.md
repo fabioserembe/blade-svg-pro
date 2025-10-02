@@ -2,6 +2,30 @@
 
 All notable changes to `blade-svg-pro` will be documented in this file
 
+## 1.0.8 - 2025-10-02
+
+### Added
+- **Inline SVG conversion** with `--inline` option to convert SVG code directly without requiring a file
+  - Support for `textarea()` prompt to paste multi-line SVG code
+  - Works with both standard and `--flux` modes
+- **Automatic viewBox normalization** to 24x24 standard size
+  - Automatically scales and centers icons to fit 24x24 viewBox
+  - Maintains aspect ratio and vector quality
+  - Improves consistency across icon sets
+
+### Fixed
+- **Fill/Stroke detection** for stroke-only icons
+  - Icons with `stroke` attribute no longer receive unwanted `fill="currentColor"`
+  - Properly handles `fill="none"` inheritance from parent elements
+  - Fixes issue where outline icons appeared filled
+- **Missing fill attribute** handling
+  - Automatically adds `fill="currentColor"` to elements without explicit fill (when appropriate)
+  - Ensures icons respond to text color classes (e.g., `text-indigo-500`)
+
+### Changed
+- Enhanced `replaceFillAndStroke()` logic to distinguish between fill-based and stroke-based icons
+- Improved attribute inheritance for better SVG rendering
+
 ## 1.0.7 - 2025-09-30
 
 ### Added
