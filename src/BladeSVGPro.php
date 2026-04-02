@@ -17,16 +17,17 @@ use function Laravel\Prompts\textarea;
 
 class BladeSVGPro extends Command
 {
-    protected $signature = 'blade-svg-pro:convert {--i=} {--o=} {--flux} {--inline} {--preserve-contrast}';
+    protected $signature = 'blade-svg-pro:convert {--i=} {--o=} {--flux} {--inline} {--preserve-contrast} {--prefix=}';
     protected $description = 'Convert SVGs into a Blade component';
 
     public function handle()
     {
         $flux = $this->option('flux');
         $inline = $this->option('inline');
+        $prefix = $this->askForPrefix();
 
         if ($inline) {
-            $this->handleInlineConversion($flux);
+            $this->handleInlineConversion($flux, $prefix);
         } else {
             $input = $this->askForInputDirectory();
             $output = $flux ? resource_path('views/flux/icon') : $this->askForOutputDirectory();
@@ -41,10 +42,24 @@ class BladeSVGPro extends Command
 
             $file_name = ($type === 'single' && !$flux) ? $this->askForFileName($output) : null;
 
-            $this->convertSvgToBlade($input, $output, $file_name, $flux, $type);
+            $this->convertSvgToBlade($input, $output, $file_name, $flux, $type, $prefix);
 
             $this->info("\nConversion completed!");
         }
+    }
+
+    private function askForPrefix(): ?string
+    {
+        $prefix = $this->option('prefix') ?? text(
+            label: 'Specify a prefix for the icons (optional)',
+            hint: 'e.g. "brandname" will generate "brandname-icon-name". Leave empty to skip'
+        );
+
+        if ($prefix === '') {
+            return null;
+        }
+
+        return Str::kebab(trim($prefix));
     }
 
     private function askForInputDirectory(): string
@@ -117,7 +132,7 @@ class BladeSVGPro extends Command
         return "$file_name.blade.php";
     }
 
-    private function convertSvgToBlade(string $input, string $output, ?string $file_name = null, bool $flux = false, string $type = 'single'): void
+    private function convertSvgToBlade(string $input, string $output, ?string $file_name = null, bool $flux = false, string $type = 'single', ?string $prefix = null): void
     {
         if (!File::isDirectory($output)) {
             File::makeDirectory($output, 0755, true);
@@ -135,6 +150,7 @@ class BladeSVGPro extends Command
                 $data = $this->processSvgFile($svgFile->getPathname(), $optimizerChain);
 
                 if ($data) {
+                    $data = $this->applyPrefix($data, $prefix);
                     $this->writeMultipleFile($output, $data, $flux);
                 }
 
@@ -149,6 +165,7 @@ class BladeSVGPro extends Command
                 $data = $this->processSvgFile($svgFile->getPathname(), $optimizerChain);
 
                 if ($data) {
+                    $data = $this->applyPrefix($data, $prefix);
                     $this->appendToSingleOutputFile($output_file, $data);
                 }
 
@@ -438,6 +455,15 @@ class BladeSVGPro extends Command
         return null;
     }
 
+    private function applyPrefix(array $data, ?string $prefix): array
+    {
+        if ($prefix) {
+            $data['kebabCaseIconName'] = $prefix . '-' . $data['kebabCaseIconName'];
+        }
+
+        return $data;
+    }
+
     private function convertToKebabCase(string $value): string
     {
         $value = preg_replace('/[()]/', '', trim($value));
@@ -519,7 +545,7 @@ class BladeSVGPro extends Command
         $dom->save($svgFilePath);
     }
 
-    private function handleInlineConversion(bool $flux): void
+    private function handleInlineConversion(bool $flux, ?string $prefix = null): void
     {
         $svgContent = $this->option('i') ?? textarea(
             label: 'Paste the SVG code',
@@ -554,6 +580,8 @@ class BladeSVGPro extends Command
         $data = $this->processInlineSvg($svgContent, $kebabCaseIconName);
 
         if ($data) {
+            $data = $this->applyPrefix($data, $prefix);
+
             if ($type === 'multiple') {
                 $this->writeMultipleFile($output, $data, $flux);
             } else {

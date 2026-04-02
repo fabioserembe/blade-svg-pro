@@ -2,6 +2,19 @@
 
 All notable changes to `blade-svg-pro` will be documented in this file
 
+## 1.0.10 - 2026-04-02
+
+### Added
+- **Icon prefix** with `--prefix` option to namespace generated icon names
+  - Adds a custom prefix to all generated icon filenames (e.g. `brandname-icon-name.blade.php`)
+  - Available via `--prefix=` parameter or interactive prompt
+  - Works with all modes: standard, `--flux`, `--inline`, single and multiple file conversion
+  - Prefix is automatically converted to kebab-case
+
+## 1.0.9.1 - 2026-01-31
+
+## 1.0.9 - 2025-10-05
+
 ## 1.0.8 - 2025-10-02
 
 ### Added

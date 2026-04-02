@@ -40,6 +40,7 @@ php artisan blade-svg-pro:convert --i="path/to/svg/directory" --o="path/to/outpu
 - `--flux`: Enables support for custom icons compatible with the Flux package.
 - `--inline`: Enables inline SVG conversion mode, allowing you to paste SVG code directly instead of using files.
 - `--preserve-contrast`: Manually forces preservation of white colors for contrast elements (auto-detected by default).
+- `--prefix`: Adds a prefix to all generated icon names (e.g. `--prefix=brandname` will generate `brandname-icon-name.blade.php`).
 
 ---
 #### Inline SVG Conversion
@@ -63,6 +64,28 @@ php artisan blade-svg-pro:convert --inline --i='<svg>...</svg>'
 **Example with Flux**:
 ```bash
 php artisan blade-svg-pro:convert --inline --flux
+```
+
+---
+#### Icon Prefix
+You can add a prefix to all generated icon names using the `--prefix` option. This is useful when you want to namespace your icons to avoid conflicts or to organize them by brand/project.
+
+```bash
+php artisan blade-svg-pro:convert --prefix=brandname
+```
+
+If not provided via the command line, you will be prompted to enter a prefix interactively (you can leave it empty to skip).
+
+**Examples:**
+- `arrow-left.svg` with `--prefix=brandname` → `brandname-arrow-left.blade.php`
+- Works with all modes: standard, `--flux`, `--inline`, single and multiple file conversion
+
+```bash
+# With Flux
+php artisan blade-svg-pro:convert --flux --prefix=brandname
+
+# With inline conversion
+php artisan blade-svg-pro:convert --inline --prefix=brandname
 ```
 
 ---
