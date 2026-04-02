@@ -209,8 +209,10 @@ class BladeSVGPro extends Command
             }
         }
 
-        $preserveContrast = $this->option('preserve-contrast') || $this->hasWhiteColorsForContrast($svg);
-        $this->replaceFillAndStroke($svg, $svgDimensions, false, $preserveContrast);
+        $iconType = $this->detectIconType($svg);
+        $bulkSecondaryColor = $iconType === 'bulk' ? $this->findSecondaryBulkColor($svg) : null;
+        $convertCurrentColorToWhite = $this->shouldConvertCurrentColorToWhite($svg);
+        $this->replaceFillAndStroke($svg, $svgDimensions, false, $iconType, $bulkSecondaryColor, $convertCurrentColorToWhite);
 
         $viewBox = $this->getViewBoxFromSvg($svg);
         [$width, $height] = [$svgDimensions['width'], $svgDimensions['height']];
@@ -301,29 +303,199 @@ class BladeSVGPro extends Command
         }
     }
 
-    private function replaceFillAndStroke(SimpleXMLElement $element, array $svgDimensions, bool $parentHasFillNone = false, bool $preserveContrast = false): void
+    private function isColorValue(string $value): bool
     {
-        $elementDimensions = $this->getElementDimensions($element);
-        $isSecondaryElement = $this->isSecondaryElement($elementDimensions, $svgDimensions);
-        $currentHasFillNone = isset($element['fill']) && strtolower(trim((string)$element['fill'])) === 'none';
+        $value = strtolower(trim($value));
 
-        $isWhiteColor = function($color) {
-            $color = strtolower(trim($color));
-            return in_array($color, ['white', '#fff', '#ffffff', 'rgb(255,255,255)', 'rgba(255,255,255,1)']);
-        };
+        if ($value === '' || in_array($value, ['none', 'transparent', 'currentcolor', 'inherit', 'initial', 'unset'])) {
+            return false;
+        }
+
+        if (str_starts_with($value, 'url(')) {
+            return false;
+        }
+
+        if (preg_match('/^rgba\s*\(.*,\s*0*\.?0+\s*\)$/', $value)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function isWhiteColor(string $color): bool
+    {
+        $color = strtolower(trim($color));
+
+        return in_array($color, ['white', '#fff', '#ffffff', 'rgb(255,255,255)', 'rgba(255,255,255,1)']);
+    }
+
+    private function normalizeColor(string $color): string
+    {
+        $color = strtolower(trim($color));
+
+        if (preg_match('/^#([0-9a-f])([0-9a-f])([0-9a-f])$/', $color, $m)) {
+            return '#' . $m[1] . $m[1] . $m[2] . $m[2] . $m[3] . $m[3];
+        }
+
+        if ($color === 'white') return '#ffffff';
+        if ($color === 'black') return '#000000';
+
+        return $color;
+    }
+
+    private function collectSvgColors(SimpleXMLElement $element, array &$fills, array &$strokes, bool &$hasPartialOpacity): void
+    {
+        if (isset($element['fill'])) {
+            $fill = strtolower(trim((string)$element['fill']));
+            if ($this->isColorValue($fill)) {
+                $fills[] = $this->normalizeColor($fill);
+            }
+        }
+
+        if (isset($element['stroke'])) {
+            $stroke = strtolower(trim((string)$element['stroke']));
+            if ($this->isColorValue($stroke)) {
+                $strokes[] = $this->normalizeColor($stroke);
+            }
+        }
+
+        if (isset($element['opacity'])) {
+            $opacity = (float)(string)$element['opacity'];
+            if ($opacity > 0 && $opacity < 1) {
+                $hasPartialOpacity = true;
+            }
+        }
+
+        if (isset($element['fill-opacity'])) {
+            $opacity = (float)(string)$element['fill-opacity'];
+            if ($opacity > 0 && $opacity < 1) {
+                $hasPartialOpacity = true;
+            }
+        }
+
+        foreach ($element->children() as $child) {
+            $this->collectSvgColors($child, $fills, $strokes, $hasPartialOpacity);
+        }
+    }
+
+    private function detectIconType(SimpleXMLElement $svg): string
+    {
+        $fills = [];
+        $strokes = [];
+        $hasPartialOpacity = false;
+
+        foreach ($svg->children() as $child) {
+            $this->collectSvgColors($child, $fills, $strokes, $hasPartialOpacity);
+        }
+
+        $uniqueFills = array_unique($fills);
+        $uniqueStrokes = array_unique($strokes);
+
+        if ($hasPartialOpacity) {
+            return 'duotone';
+        }
+
+        if ($this->hasWhiteColorsForContrast($svg)) {
+            return 'solid';
+        }
+
+        if (count($uniqueStrokes) > 0 && count($uniqueFills) === 0) {
+            return 'linear';
+        }
+
+        if (count($uniqueFills) >= 2) {
+            return 'bulk';
+        }
+
+        return 'solid';
+    }
+
+    private function findSecondaryBulkColor(SimpleXMLElement $svg): ?string
+    {
+        $colorCounts = [];
+
+        foreach ($svg->children() as $child) {
+            $this->countFillColors($child, $colorCounts);
+        }
+
+        if (count($colorCounts) < 2) {
+            return null;
+        }
+
+        arsort($colorCounts);
+        $colors = array_keys($colorCounts);
+
+        return end($colors);
+    }
+
+    private function countFillColors(SimpleXMLElement $element, array &$counts): void
+    {
+        if (isset($element['fill'])) {
+            $fill = strtolower(trim((string)$element['fill']));
+            if ($this->isColorValue($fill)) {
+                $normalized = $this->normalizeColor($fill);
+                $counts[$normalized] = ($counts[$normalized] ?? 0) + 1;
+            }
+        }
+
+        foreach ($element->children() as $child) {
+            $this->countFillColors($child, $counts);
+        }
+    }
+
+    private function hasCurrentColorElements(SimpleXMLElement $element): bool
+    {
+        if (isset($element['fill']) && strtolower(trim((string)$element['fill'])) === 'currentcolor') {
+            return true;
+        }
+
+        if (isset($element['stroke']) && strtolower(trim((string)$element['stroke'])) === 'currentcolor') {
+            return true;
+        }
+
+        foreach ($element->children() as $child) {
+            if ($this->hasCurrentColorElements($child)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function shouldConvertCurrentColorToWhite(SimpleXMLElement $svg): bool
+    {
+        $fills = [];
+        $strokes = [];
+        $hasPartialOpacity = false;
+
+        foreach ($svg->children() as $child) {
+            $this->collectSvgColors($child, $fills, $strokes, $hasPartialOpacity);
+        }
+
+        $hasHardcodedColors = count($fills) > 0 || count($strokes) > 0;
+
+        return $hasHardcodedColors && $this->hasCurrentColorElements($svg);
+    }
+
+    private function replaceFillAndStroke(SimpleXMLElement $element, array $svgDimensions, bool $parentHasFillNone, string $iconType, ?string $bulkSecondaryColor = null, bool $convertCurrentColorToWhite = false): void
+    {
+        $currentHasFillNone = isset($element['fill']) && strtolower(trim((string)$element['fill'])) === 'none';
 
         if (isset($element['fill'])) {
             $fillColor = strtolower(trim((string)$element['fill']));
-            if ($fillColor !== 'none') {
-                if ($preserveContrast && $isWhiteColor($fillColor)) {
-                    // Keep white color for contrast
-                } else {
-                    if ($isSecondaryElement) {
-                        $element['fill'] = 'currentColor';
-                        $element['opacity'] = '0.3';
-                    } else {
-                        $element['fill'] = 'currentColor';
+
+            if ($convertCurrentColorToWhite && $fillColor === 'currentcolor') {
+                $element['fill'] = '#fff';
+            } elseif ($this->isColorValue($fillColor)) {
+                if ($iconType === 'solid' && $this->isWhiteColor($fillColor)) {
+                    // Preserva il colore bianco per il contrasto nelle icone solid
+                } elseif ($iconType === 'bulk' && $bulkSecondaryColor && $this->normalizeColor($fillColor) === $bulkSecondaryColor) {
+                    $element['fill'] = 'currentColor';
+                    if (!isset($element['opacity'])) {
+                        $element['opacity'] = '0.4';
                     }
+                } else {
+                    $element['fill'] = 'currentColor';
                 }
             }
         } else {
@@ -331,101 +503,29 @@ class BladeSVGPro extends Command
             $hasStroke = isset($element['stroke']);
 
             if (!$parentHasFillNone && !$hasStroke && !in_array($elementName, ['defs', 'clipPath', 'mask', 'pattern', 'linearGradient', 'radialGradient', 'filter', 'g'])) {
-                if ($isSecondaryElement) {
-                    $element['fill'] = 'currentColor';
-                    $element['opacity'] = '0.3';
-                } else {
-                    $element['fill'] = 'currentColor';
-                }
+                $element['fill'] = 'currentColor';
             }
         }
 
         if (isset($element['stroke'])) {
             $strokeColor = strtolower(trim((string)$element['stroke']));
-            if ($strokeColor === 'transparent' || $strokeColor === 'rgba(0,0,0,0)') {
+
+            if ($convertCurrentColorToWhite && $strokeColor === 'currentcolor') {
+                $element['stroke'] = '#fff';
+            } elseif ($strokeColor === 'transparent' || $strokeColor === 'rgba(0,0,0,0)') {
                 $element['stroke'] = 'none';
-            } elseif ($strokeColor !== 'none') {
-                if ($preserveContrast && $isWhiteColor($strokeColor)) {
-                    // Keep white color for contrast
+            } elseif ($this->isColorValue($strokeColor)) {
+                if ($iconType === 'solid' && $this->isWhiteColor($strokeColor)) {
+                    // Preserva lo stroke bianco per il contrasto nelle icone solid
                 } else {
-                    if (!$isSecondaryElement) {
-                        $element['stroke'] = 'currentColor';
-                    }
+                    $element['stroke'] = 'currentColor';
                 }
             }
         }
 
         foreach ($element->children() as $child) {
-            $this->replaceFillAndStroke($child, $svgDimensions, $currentHasFillNone || $parentHasFillNone, $preserveContrast);
+            $this->replaceFillAndStroke($child, $svgDimensions, $currentHasFillNone || $parentHasFillNone, $iconType, $bulkSecondaryColor, $convertCurrentColorToWhite);
         }
-    }
-
-    private function getElementDimensions(SimpleXMLElement $element): array
-    {
-        $x = isset($element['x']) ? $this->parseDimension($element['x']) : 0;
-        $y = isset($element['y']) ? $this->parseDimension($element['y']) : 0;
-        $width = isset($element['width']) ? $this->parseDimension($element['width']) : null;
-        $height = isset($element['height']) ? $this->parseDimension($element['height']) : null;
-
-        if ($element->getName() === 'circle') {
-            $cx = isset($element['cx']) ? $this->parseDimension($element['cx']) : 0;
-            $cy = isset($element['cy']) ? $this->parseDimension($element['cy']) : 0;
-            $r = isset($element['r']) ? $this->parseDimension($element['r']) : 0;
-            $x = $cx - $r;
-            $y = $cy - $r;
-            $width = $r * 2;
-            $height = $r * 2;
-        } elseif ($element->getName() === 'ellipse') {
-            $cx = isset($element['cx']) ? $this->parseDimension($element['cx']) : 0;
-            $cy = isset($element['cy']) ? $this->parseDimension($element['cy']) : 0;
-            $rx = isset($element['rx']) ? $this->parseDimension($element['rx']) : 0;
-            $ry = isset($element['ry']) ? $this->parseDimension($element['ry']) : 0;
-            $x = $cx - $rx;
-            $y = $cy - $ry;
-            $width = $rx * 2;
-            $height = $ry * 2;
-        } elseif ($element->getName() === 'path') {
-            $width = null;
-            $height = null;
-        }
-
-        return [
-            'x' => $x,
-            'y' => $y,
-            'width' => $width,
-            'height' => $height,
-        ];
-    }
-
-    private function isSecondaryElement(array $elementDimensions, array $svgDimensions): bool
-    {
-        if ($elementDimensions['width'] === null || $elementDimensions['height'] === null) {
-            return false;
-        }
-
-        $elementArea = $elementDimensions['width'] * $elementDimensions['height'];
-        $svgArea = $svgDimensions['width'] * $svgDimensions['height'];
-
-        if ($svgArea == 0) {
-            return false;
-        }
-
-        $coverage = ($elementArea / $svgArea) * 100;
-
-        if ($coverage >= 90) {
-            return true;
-        }
-
-        if (
-            $elementDimensions['x'] == 0 &&
-            $elementDimensions['y'] == 0 &&
-            $elementDimensions['width'] == $svgDimensions['width'] &&
-            $elementDimensions['height'] == $svgDimensions['height']
-        ) {
-            return true;
-        }
-
-        return false;
     }
 
     private function extractDimensionsFromSvg(SimpleXMLElement $svg): array
@@ -473,16 +573,11 @@ class BladeSVGPro extends Command
 
     private function hasWhiteColorsForContrast(SimpleXMLElement $element): bool
     {
-        $isWhiteColor = function($color) {
-            $color = strtolower(trim($color));
-            return in_array($color, ['white', '#fff', '#ffffff', 'rgb(255,255,255)', 'rgba(255,255,255,1)']);
-        };
-
-        if (isset($element['fill']) && $isWhiteColor((string)$element['fill'])) {
+        if (isset($element['fill']) && $this->isWhiteColor((string)$element['fill'])) {
             return true;
         }
 
-        if (isset($element['stroke']) && $isWhiteColor((string)$element['stroke'])) {
+        if (isset($element['stroke']) && $this->isWhiteColor((string)$element['stroke'])) {
             return true;
         }
 
@@ -633,8 +728,10 @@ class BladeSVGPro extends Command
                 }
             }
 
-            $preserveContrast = $this->option('preserve-contrast') || $this->hasWhiteColorsForContrast($svg);
-            $this->replaceFillAndStroke($svg, $svgDimensions, false, $preserveContrast);
+            $iconType = $this->detectIconType($svg);
+            $bulkSecondaryColor = $iconType === 'bulk' ? $this->findSecondaryBulkColor($svg) : null;
+            $convertCurrentColorToWhite = $this->shouldConvertCurrentColorToWhite($svg);
+            $this->replaceFillAndStroke($svg, $svgDimensions, false, $iconType, $bulkSecondaryColor, $convertCurrentColorToWhite);
 
             $viewBox = $this->getViewBoxFromSvg($svg);
             [$width, $height] = [$svgDimensions['width'], $svgDimensions['height']];

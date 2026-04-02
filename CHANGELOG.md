@@ -2,6 +2,28 @@
 
 All notable changes to `blade-svg-pro` will be documented in this file
 
+## 1.1.0 - 2026-04-02
+
+### Added
+- **Rilevamento automatico della tipologia di icona** basato sull'analisi strutturale dell'SVG (presenza di stroke vs fill, numero di colori distinti, presenza di opacity)
+  - **Linear/Outline**: stroke → `currentColor`, `fill="none"` preservato
+  - **Bold**: stesso trattamento delle outline
+  - **Solid**: fill → `currentColor`, con preservazione automatica del bianco per il contrasto
+  - **Duotone**: colori → `currentColor`, opacity esistente mai sovrascritta
+  - **Bulk**: colore primario → `currentColor`, colore secondario → `currentColor` con `opacity="0.4"`
+- **Conversione automatica di `currentColor` preesistente in bianco** per icone solid con sfondo colorato e dettagli interni in `currentColor` (es. lancette di un orologio, simbolo percentuale, checkmark)
+- **Sostituzione completa di tutti i formati colore hardcoded**: hex (`#fff`, `#000`, `#3B82F6`), named colors (`white`, `black`, `red`), `rgb()`, `rgba()`
+- **Riconoscimento di `rgba(...,0)` come trasparente**: fill con alpha=0 (es. `rgba(255,255,255,0)`) non vengono più convertiti in `currentColor`
+
+### Changed
+- Il flag `--preserve-contrast` non è più necessario: il rilevamento del contrasto è ora completamente automatico
+- Refactoring completo di `replaceFillAndStroke()` con logica type-based
+- Rimossi i metodi `getElementDimensions()` e `isSecondaryElement()` (sostituiti dal nuovo sistema di rilevamento)
+
+### Fixed
+- Icone solid con dettagli interni in `currentColor` (es. badge-percent, clock) non appaiono più come blocchi colorati senza dettagli visibili
+- Icone outline con `fill="rgba(255,255,255,0)"` (hit-area trasparente) non generano più un blocco opaco `currentColor`
+
 ## 1.0.10 - 2026-04-02
 
 ### Added

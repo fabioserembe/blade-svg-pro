@@ -6,11 +6,11 @@ Simplify the implementation of custom icons and use them in your Laravel project
 ## Requirements
 Ensure you have the following requirements to use BladeSVGPro:
 
-- PHP: ^8.0
-- PHP Extension: `ext-simplexml`
-- Laravel core: >= 10.x
+- PHP: ^8.1
+- PHP Extensions: `ext-dom`, `ext-simplexml`, `ext-libxml`
+- Laravel: ^8.0 | ^9.0 | ^10.0 | ^11.0 | ^12.0
 - Additional Packages:
-    - `laravel/prompts`: ^0.1.25
+    - `laravel/prompts`: ^0.1.25 | ^0.2.0 | ^0.3.0
     - `spatie/image-optimizer`: ^1.7
 
 Make sure all required components are correctly installed in your environment to ensure the proper functioning of the package.
@@ -189,46 +189,60 @@ $classes = Flux::classes('shrink-0')
 ```
 
 ___
-### Smart White Color Preservation
-BladeSVGPro automatically detects and preserves white colors used for contrast in solid icons (e.g., checkmarks on shields, crosses on badges).
+### Automatic Color Replacement
 
-**How it works:**
-- The converter automatically scans SVG files for white colors (`white`, `#fff`, `#ffffff`)
-- When detected, these colors are preserved instead of being converted to `currentColor`
-- This ensures solid icons with contrast elements display correctly
+BladeSVGPro automatically detects the icon type and applies the correct color replacement strategy. **No manual configuration is needed** — the converter analyzes the SVG structure (presence of stroke vs fill, number of distinct colors, presence of opacity) and applies the appropriate rules.
 
-**Example:**
+#### Supported icon types
+
+| Type | Detection | Color replacement |
+|------|-----------|-------------------|
+| **Linear/Outline** | Only strokes, no fills | `stroke` → `currentColor`, `fill="none"` preserved |
+| **Bold** | Same as linear (thicker strokes) | Same as linear |
+| **Solid** | Fill-based, no strokes | `fill` → `currentColor` |
+| **Solid with contrast** | Fill + white elements or `currentColor` elements | Background → `currentColor`, contrast → `#fff` preserved |
+| **Duotone** | Elements with partial opacity | Colors → `currentColor`, existing `opacity` preserved |
+| **Bulk** | Two distinct fill colors, no opacity | Primary → `currentColor`, secondary → `currentColor` + `opacity="0.4"` |
+
+#### Automatic contrast preservation
+
+Solid icons with internal contrast elements are handled automatically in two scenarios:
+
+**1. White elements as contrast** (e.g., white checkmark on dark shield):
 ```svg
-<!-- Original SVG with white stroke for contrast -->
+<!-- Input -->
 <svg>
-  <path fill="currentColor" d="...shield path..." />
-  <path fill="none" stroke="white" d="...checkmark path..." />
+  <path fill="#292D32" d="...shield..." />
+  <path fill="#fff" d="...checkmark..." />
+</svg>
+
+<!-- Output: white preserved automatically -->
+<svg>
+  <path fill="currentColor" d="...shield..." />
+  <path fill="#fff" d="...checkmark..." />
 </svg>
 ```
 
-After conversion, the white stroke is automatically preserved:
-```php
+**2. `currentColor` elements as contrast** (e.g., clock hands on colored background):
+```svg
+<!-- Input -->
 <svg>
-  <path fill="currentColor" d="...shield path..." />
-  <path fill="none" stroke="white" d="...checkmark path..." />
+  <circle fill="#edad00" cx="12" cy="12" r="10" />
+  <path fill="none" stroke="currentColor" d="...hands..." />
+</svg>
+
+<!-- Output: currentColor converted to white for contrast -->
+<svg>
+  <circle fill="currentColor" cx="12" cy="12" r="10" />
+  <path fill="none" stroke="#fff" d="...hands..." />
 </svg>
 ```
 
-**Manual override (optional):**
-If you need to force preservation of white colors, use the `--preserve-contrast` flag:
-```bash
-php artisan blade-svg-pro:convert --inline --flux --preserve-contrast
-```
+#### What gets replaced
 
-**Note:** This feature works automatically for both file-based and inline conversions.
-
-___
-### Currently supported icon types
-- Linear
-- Bold
-- Duotone
-- Bulk
-- Solid (with automatic white contrast preservation)
+- **All hardcoded colors**: hex (`#fff`, `#000`, `#3B82F6`), named (`white`, `black`, `red`), `rgb()`, `rgba()`
+- **Transparent fills preserved**: `fill="none"`, `stroke="none"`, `rgba(...,0)` are never converted
+- **Existing opacity preserved**: `opacity` attributes on duotone elements are never overwritten
 
 ---
 ## Issues and bugs
