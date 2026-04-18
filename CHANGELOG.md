@@ -2,6 +2,12 @@
 
 All notable changes to `blade-svg-pro` will be documented in this file
 
+## 1.2.0 - 2026-04-18
+
+### Added
+- Supporto a Laravel 13 (`illuminate/*: ^13.0`)
+- Supporto a `orchestra/testbench: ^11.0` per i test su Laravel 13
+
 ## 1.1.0 - 2026-04-02
 
 ### Added

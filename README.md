@@ -8,7 +8,7 @@ Ensure you have the following requirements to use BladeSVGPro:
 
 - PHP: ^8.1
 - PHP Extensions: `ext-dom`, `ext-simplexml`, `ext-libxml`
-- Laravel: ^8.0 | ^9.0 | ^10.0 | ^11.0 | ^12.0
+- Laravel: ^8.0 | ^9.0 | ^10.0 | ^11.0 | ^12.0 | ^13.0
 - Additional Packages:
     - `laravel/prompts`: ^0.1.25 | ^0.2.0 | ^0.3.0
     - `spatie/image-optimizer`: ^1.7
