@@ -245,6 +245,17 @@ Solid icons with internal contrast elements are handled automatically in two sce
 - **Existing opacity preserved**: `opacity` attributes on duotone elements are never overwritten
 
 ---
+## Laravel Boost integration
+BladeSVGPro ships with [Laravel Boost](https://laravel.com/docs/13.x/boost) resources so AI coding agents (Claude Code, Cursor, Copilot, etc.) know how to use the package correctly.
+
+If your project uses Boost, these resources are published automatically when you run `php artisan boost:install` (or `php artisan boost:update --discover`):
+
+- **AI guideline** (`resources/boost/guidelines/core.blade.php`): loaded upfront, gives the agent a short overview of the package.
+- **Agent skill** (`resources/boost/skills/blade-svg-pro/SKILL.md`): loaded on-demand, with the full option list, output modes, Flux usage and color-replacement behavior.
+
+The skill is written to activate when you build a frontend from SVG assets — for example icons exported from Figma or fetched via an MCP server — so the agent converts them with `blade-svg-pro:convert` instead of hand-writing SVG markup.
+
+---
 ## Issues and bugs
 Please report any issues or bugs in the [issues section](https://github.com/fabioserembe/blade-svg-pro/issues).
 
