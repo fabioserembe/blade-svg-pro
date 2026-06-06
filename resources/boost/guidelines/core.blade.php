@@ -10,7 +10,7 @@ php artisan blade-svg-pro:convert --flux --i="resources/svg" --no-interaction
 </code-snippet>
 @endverbatim
 
-Component names come from the SVG filename in kebab-case (`--prefix=brand` namespaces them); in Flux, variants are props (`variant="solid"`), not separate files. Every SVG is normalized to a 24×24 viewBox.
+Choose the mode from the project context: use `--flux` when the project uses Flux (`livewire/flux`, an existing `resources/views/flux/icon/`, or `<flux:icon.* />`), otherwise standard file mode; if it is unclear, ask the user instead of assuming. Component names come from the SVG filename in kebab-case (`--prefix=brand` namespaces them); in Flux, variants are props (`variant="solid"`), not separate files. Every SVG is normalized to a 24×24 viewBox.
 
 - Use the generated components in views, styling color and size with Tailwind:
 

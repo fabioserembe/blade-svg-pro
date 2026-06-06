@@ -45,6 +45,16 @@ blade-svg-pro:convert {--i=} {--o=} {--flux} {--inline} {--preserve-contrast} {-
 
 When run without `--flux` and without `--mode`, the command asks whether to produce a **single file** (all icons in one `@switch`-based component) or **multiple files** (one component per icon).
 
+## Choosing the mode
+
+Pick the mode from the project's context — do not default to Flux (or any mode) blindly:
+
+- **Use `--flux`** when the project uses Flux: `livewire/flux` is installed, a `resources/views/flux/icon/` directory already exists, or the codebase already references `<flux:icon.* />`.
+- **Use standard file mode** in a plain Blade project. Inspect where existing icon components live and whether they follow the single-file (`@switch`) or multiple-file convention, and match it; default to `multiple` when there is no precedent.
+- **Use `--inline`** when converting a single pasted SVG snippet rather than files on disk.
+
+If the context is ambiguous or there is no existing convention, **ask the user which mode to use** (and where to output) instead of assuming.
+
 ## Non-interactive / agent usage (read this before running)
 
 The command is interactive: any option you omit becomes a `laravel/prompts` prompt, and with no TTY an unanswered prompt would otherwise **hang**. **Every mode can run fully unattended** — pass the flags for the prompts that mode would show, and/or add Laravel's global `--no-interaction`. With `--no-interaction`, omitted prompts resolve to sensible defaults (no prefix, `--mode=multiple`); any value with no default that is still missing (`--i`, `--o` in non-Flux mode, `--name` for inline or single-file) makes the command **fail with a clear error instead of hanging**.

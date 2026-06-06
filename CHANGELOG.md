@@ -2,6 +2,11 @@
 
 All notable changes to `blade-svg-pro` will be documented in this file
 
+## 1.2.3 - 2026-06-06
+
+### Changed
+- The Laravel Boost skill and guideline now instruct the agent to **choose the conversion mode from the project context** (use `--flux` when the project uses Flux, otherwise standard file mode) and to **ask the user when the context is ambiguous**, instead of defaulting to a single mode
+
 ## 1.2.2 - 2026-06-06
 
 ### Added

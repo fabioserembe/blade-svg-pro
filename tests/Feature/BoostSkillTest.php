@@ -92,6 +92,19 @@ it('documenta che ogni modalità è eseguibile in modo non interattivo', functio
     expect($content)->toContain('fail with a clear error');
 });
 
+it('guida la scelta della modalità in base al contesto del progetto', function () {
+    $content = File::get($this->skillPath);
+
+    expect($content)->toContain('Choosing the mode');
+
+    // Rilevamento del contesto: Flux vs progetto Blade standard
+    expect(strtolower($content))->toContain('livewire/flux');
+    expect($content)->toContain('resources/views/flux/icon');
+
+    // Fallback esplicito: in caso di ambiguità, chiedere all'utente
+    expect(strtolower($content))->toContain('ask the user');
+});
+
 it('documenta le convenzioni reali di input, naming e output', function () {
     $content = File::get($this->skillPath);
 
