@@ -2,33 +2,53 @@
 
 All notable changes to `blade-svg-pro` will be documented in this file
 
+## 1.2.2 - 2026-06-06
+
+### Added
+- **Laravel Boost integration**: the package now ships resources for AI agents, installed automatically with `php artisan boost:install` in projects that use Boost
+  - AI guideline (`resources/boost/guidelines/core.blade.php`) loaded upfront with a package overview
+  - Agent skill (`resources/boost/skills/blade-svg-pro/SKILL.md`) activated on-demand, covering options, naming conventions, 24×24 normalization and color replacement
+  - The skill is designed to activate when building a frontend from SVG assets (e.g. icons exported from Figma or fetched via MCP)
+- **`--name` option**: sets the icon name in `--inline` mode and the output file name in single-file mode, skipping the related prompt
+- **`--mode` option**: sets the output to `single` or `multiple`, skipping the choice prompt (ignored with `--flux`, which is always multiple); invalid values fail fast with a clear error
+- **Support for `--i` with a single `.svg` file** in addition to directories, to convert one icon without placing it in a folder
+- **Fully non-interactive execution** via Laravel's global `--no-interaction` flag: omitted prompts fall back to sensible defaults (no prefix, `--mode=multiple`); any required value still missing (`--i`, `--o` without `--flux`, `--name` for inline/single-file) makes the command fail with a clear error instead of blocking while waiting for input
+
+### Changed
+- All command modes (`--flux`, standard files, `--inline`) are now automatable in CI, scripts and AI agents by passing the corresponding options
+
+## 1.2.1 - 2026-04-20
+
+### Added
+- Laravel 13 compatibility
+
 ## 1.2.0 - 2026-04-18
 
 ### Added
-- Supporto a Laravel 13 (`illuminate/*: ^13.0`)
-- Supporto a `orchestra/testbench: ^11.0` per i test su Laravel 13
+- Laravel 13 support (`illuminate/*: ^13.0`)
+- `orchestra/testbench: ^11.0` support for testing on Laravel 13
 
 ## 1.1.0 - 2026-04-02
 
 ### Added
-- **Rilevamento automatico della tipologia di icona** basato sull'analisi strutturale dell'SVG (presenza di stroke vs fill, numero di colori distinti, presenza di opacity)
-  - **Linear/Outline**: stroke → `currentColor`, `fill="none"` preservato
-  - **Bold**: stesso trattamento delle outline
-  - **Solid**: fill → `currentColor`, con preservazione automatica del bianco per il contrasto
-  - **Duotone**: colori → `currentColor`, opacity esistente mai sovrascritta
-  - **Bulk**: colore primario → `currentColor`, colore secondario → `currentColor` con `opacity="0.4"`
-- **Conversione automatica di `currentColor` preesistente in bianco** per icone solid con sfondo colorato e dettagli interni in `currentColor` (es. lancette di un orologio, simbolo percentuale, checkmark)
-- **Sostituzione completa di tutti i formati colore hardcoded**: hex (`#fff`, `#000`, `#3B82F6`), named colors (`white`, `black`, `red`), `rgb()`, `rgba()`
-- **Riconoscimento di `rgba(...,0)` come trasparente**: fill con alpha=0 (es. `rgba(255,255,255,0)`) non vengono più convertiti in `currentColor`
+- **Automatic icon type detection** based on structural analysis of the SVG (stroke vs fill, number of distinct colors, presence of opacity)
+  - **Linear/Outline**: stroke → `currentColor`, `fill="none"` preserved
+  - **Bold**: same treatment as outline icons
+  - **Solid**: fill → `currentColor`, with automatic white preservation for contrast
+  - **Duotone**: colors → `currentColor`, existing opacity never overwritten
+  - **Bulk**: primary color → `currentColor`, secondary color → `currentColor` with `opacity="0.4"`
+- **Automatic conversion of pre-existing `currentColor` to white** for solid icons with a colored background and inner details in `currentColor` (e.g. clock hands, percent symbol, checkmark)
+- **Full replacement of every hardcoded color format**: hex (`#fff`, `#000`, `#3B82F6`), named colors (`white`, `black`, `red`), `rgb()`, `rgba()`
+- **Recognition of `rgba(...,0)` as transparent**: fills with alpha=0 (e.g. `rgba(255,255,255,0)`) are no longer converted to `currentColor`
 
 ### Changed
-- Il flag `--preserve-contrast` non è più necessario: il rilevamento del contrasto è ora completamente automatico
-- Refactoring completo di `replaceFillAndStroke()` con logica type-based
-- Rimossi i metodi `getElementDimensions()` e `isSecondaryElement()` (sostituiti dal nuovo sistema di rilevamento)
+- The `--preserve-contrast` flag is no longer required: contrast detection is now fully automatic
+- Complete refactoring of `replaceFillAndStroke()` with type-based logic
+- Removed the `getElementDimensions()` and `isSecondaryElement()` methods (replaced by the new detection system)
 
 ### Fixed
-- Icone solid con dettagli interni in `currentColor` (es. badge-percent, clock) non appaiono più come blocchi colorati senza dettagli visibili
-- Icone outline con `fill="rgba(255,255,255,0)"` (hit-area trasparente) non generano più un blocco opaco `currentColor`
+- Solid icons with inner details in `currentColor` (e.g. badge-percent, clock) no longer render as colored blocks with no visible details
+- Outline icons with `fill="rgba(255,255,255,0)"` (transparent hit-area) no longer produce an opaque `currentColor` block
 
 ## 1.0.10 - 2026-04-02
 
