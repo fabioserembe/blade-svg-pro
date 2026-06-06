@@ -17,43 +17,91 @@ use function Laravel\Prompts\textarea;
 
 class BladeSVGPro extends Command
 {
-    protected $signature = 'blade-svg-pro:convert {--i=} {--o=} {--flux} {--inline} {--preserve-contrast} {--prefix=}';
+    protected $signature = 'blade-svg-pro:convert {--i=} {--o=} {--flux} {--inline} {--preserve-contrast} {--prefix=} {--name=} {--mode=}';
     protected $description = 'Convert SVGs into a Blade component';
 
     public function handle()
     {
+        $mode = $this->option('mode');
+        if ($mode !== null && !in_array($mode, ['single', 'multiple'], true)) {
+            $this->error("Invalid value for --mode: '{$mode}'. Allowed values are 'single' or 'multiple'.");
+            return self::FAILURE;
+        }
+
         $flux = $this->option('flux');
         $inline = $this->option('inline');
         $prefix = $this->askForPrefix();
 
         if ($inline) {
-            $this->handleInlineConversion($flux, $prefix);
-        } else {
-            $input = $this->askForInputDirectory();
-            $output = $flux ? resource_path('views/flux/icon') : $this->askForOutputDirectory();
-
-            $type = $flux ? 'multiple' : select(
-                label: 'Do you want to convert icons into a single or multiple files?',
-                options: [
-                    'single' => 'Single file',
-                    'multiple' => 'Multiple files',
-                ]
-            );
-
-            $file_name = ($type === 'single' && !$flux) ? $this->askForFileName($output) : null;
-
-            $this->convertSvgToBlade($input, $output, $file_name, $flux, $type, $prefix);
-
-            $this->info("\nConversion completed!");
+            return $this->handleInlineConversion($flux, $prefix);
         }
+
+        $input = $this->askForInputDirectory();
+        if ($input === null) {
+            return self::FAILURE;
+        }
+
+        $output = $flux ? resource_path('views/flux/icon') : $this->askForOutputDirectory();
+        if ($output === null) {
+            return self::FAILURE;
+        }
+
+        $type = $flux ? 'multiple' : $this->resolveMode('Do you want to convert icons into a single or multiple files?');
+
+        if ($type === 'single' && !$flux) {
+            $file_name = $this->askForFileName($output);
+            if ($file_name === null) {
+                return self::FAILURE;
+            }
+        } else {
+            $file_name = null;
+        }
+
+        $this->convertSvgToBlade($input, $output, $file_name, $flux, $type, $prefix);
+
+        $this->info("\nConversion completed!");
+
+        return self::SUCCESS;
+    }
+
+    private function isInteractive(): bool
+    {
+        return $this->input->isInteractive();
+    }
+
+    private function resolveMode(string $label): string
+    {
+        $mode = $this->option('mode');
+
+        if ($mode !== null) {
+            return $mode;
+        }
+
+        if (!$this->isInteractive()) {
+            return 'multiple';
+        }
+
+        return select(
+            label: $label,
+            options: [
+                'single' => 'Single file',
+                'multiple' => 'Multiple files',
+            ]
+        );
     }
 
     private function askForPrefix(): ?string
     {
-        $prefix = $this->option('prefix') ?? text(
-            label: 'Specify a prefix for the icons (optional)',
-            hint: 'e.g. "brandname" will generate "brandname-icon-name". Leave empty to skip'
-        );
+        $prefix = $this->option('prefix');
+
+        if ($prefix === null) {
+            $prefix = $this->isInteractive()
+                ? text(
+                    label: 'Specify a prefix for the icons (optional)',
+                    hint: 'e.g. "brandname" will generate "brandname-icon-name". Leave empty to skip'
+                )
+                : '';
+        }
 
         if ($prefix === '') {
             return null;
@@ -62,28 +110,66 @@ class BladeSVGPro extends Command
         return Str::kebab(trim($prefix));
     }
 
-    private function askForInputDirectory(): string
+    private function askForInputDirectory(): ?string
     {
-        $input = $this->option('i') ?? text(
-            label: 'Specify the path of the SVG directory',
-            required: true
-        );
+        $input = $this->option('i');
+
+        if ($input === null) {
+            if (!$this->isInteractive()) {
+                $this->error('The --i option is required when running non-interactively.');
+                return null;
+            }
+
+            $input = text(
+                label: 'Specify the path of the SVG directory or file',
+                required: true
+            );
+        }
 
         $input = str_replace('\ ', ' ', $input);
 
-        if (!File::isDirectory($input)) {
-            $this->error("The directory '$input' does not exist. Please try again");
-            return $this->askForInputDirectory();
+        while (!$this->isValidInputPath($input)) {
+            if ($this->option('i') !== null || !$this->isInteractive()) {
+                $this->error("The path '{$input}' does not exist or is not an SVG file/directory.");
+                return null;
+            }
+
+            $this->error("The directory '{$input}' does not exist. Please try again");
+            $input = text(
+                label: 'Specify the path of the SVG directory or file',
+                required: true
+            );
         }
 
         return $input;
     }
 
-    private function askForOutputDirectory(): string
+    private function isValidInputPath(string $input): bool
     {
+        if (File::isDirectory($input)) {
+            return true;
+        }
+
+        return File::isFile($input)
+            && strtolower(pathinfo($input, PATHINFO_EXTENSION)) === 'svg';
+    }
+
+    private function askForOutputDirectory(): ?string
+    {
+        $output = $this->option('o');
+
+        if ($output !== null) {
+            return $output;
+        }
+
+        if (!$this->isInteractive()) {
+            $this->error('The --o option is required when running non-interactively without --flux.');
+            return null;
+        }
+
         $directories = $this->getAllDirectories(resource_path('views'));
 
-        return $this->option('o') ?? suggest(
+        return suggest(
             label: 'Specify the path where to save the .blade.php files',
             options: $directories,
             required: true,
@@ -107,18 +193,31 @@ class BladeSVGPro extends Command
         return $directories;
     }
 
-    private function askForFileName(string $output): string
+    private function askForFileName(string $output): ?string
     {
-        $file_name = text(
-            label: 'Specify the name of the file',
-            required: true,
-            hint: "The name will be automatically converted to kebab-case. (The extension '.blade.php' will be automatically added)",
-            transform: fn(string $value) => Str::kebab(preg_replace('/[()]/', '', trim($value)))
-        );
+        $optionName = $this->option('name');
+
+        if ($optionName !== null) {
+            $file_name = $this->convertToKebabCase($optionName);
+        } elseif (!$this->isInteractive()) {
+            $this->error('The --name option is required for single-file mode when running non-interactively.');
+            return null;
+        } else {
+            $file_name = text(
+                label: 'Specify the name of the file',
+                required: true,
+                hint: "The name will be automatically converted to kebab-case. (The extension '.blade.php' will be automatically added)",
+                transform: fn(string $value) => Str::kebab(preg_replace('/[()]/', '', trim($value)))
+            );
+        }
 
         $output_file = "$output/$file_name.blade.php";
 
         if (File::exists($output_file)) {
+            if ($optionName !== null || !$this->isInteractive()) {
+                return "$file_name.blade.php";
+            }
+
             $confirmed = confirm(
                 label: "The file '$file_name' already exists, do you want to overwrite it?",
                 default: false,
@@ -142,12 +241,12 @@ class BladeSVGPro extends Command
 
         $this->info("Start conversion");
 
-        $svgFiles = File::allFiles($input);
+        $svgFiles = $this->collectSvgFiles($input);
         $this->output->progressStart(count($svgFiles));
 
         if ($type === 'multiple') {
             foreach ($svgFiles as $svgFile) {
-                $data = $this->processSvgFile($svgFile->getPathname(), $optimizerChain);
+                $data = $this->processSvgFile($svgFile, $optimizerChain);
 
                 if ($data) {
                     $data = $this->applyPrefix($data, $prefix);
@@ -162,7 +261,7 @@ class BladeSVGPro extends Command
             $this->initializeSingleOutputFile($output_file);
 
             foreach ($svgFiles as $svgFile) {
-                $data = $this->processSvgFile($svgFile->getPathname(), $optimizerChain);
+                $data = $this->processSvgFile($svgFile, $optimizerChain);
 
                 if ($data) {
                     $data = $this->applyPrefix($data, $prefix);
@@ -176,6 +275,18 @@ class BladeSVGPro extends Command
         }
 
         $this->output->progressFinish();
+    }
+
+    private function collectSvgFiles(string $input): array
+    {
+        if (File::isDirectory($input)) {
+            return array_map(
+                fn($file) => $file->getPathname(),
+                File::allFiles($input)
+            );
+        }
+
+        return [$input];
     }
 
     private function processSvgFile($svgFilePath, $optimizerChain)
@@ -640,29 +751,44 @@ class BladeSVGPro extends Command
         $dom->save($svgFilePath);
     }
 
-    private function handleInlineConversion(bool $flux, ?string $prefix = null): void
+    private function handleInlineConversion(bool $flux, ?string $prefix = null): int
     {
-        $svgContent = $this->option('i') ?? textarea(
-            label: 'Paste the SVG code',
-            required: true,
-            hint: 'Press Ctrl+D when finished'
-        );
+        $svgContent = $this->option('i');
+
+        if ($svgContent === null) {
+            if (!$this->isInteractive()) {
+                $this->error('The --i option (SVG code) is required for inline conversion when running non-interactively.');
+                return self::FAILURE;
+            }
+
+            $svgContent = textarea(
+                label: 'Paste the SVG code',
+                required: true,
+                hint: 'Press Ctrl+D when finished'
+            );
+        }
 
         $output = $flux ? resource_path('views/flux/icon') : $this->askForOutputDirectory();
+        if ($output === null) {
+            return self::FAILURE;
+        }
 
-        $type = $flux ? 'multiple' : select(
-            label: 'Do you want to convert the icon into a single or multiple files?',
-            options: [
-                'single' => 'Single file',
-                'multiple' => 'Multiple files',
-            ]
-        );
+        $type = $flux ? 'multiple' : $this->resolveMode('Do you want to convert the icon into a single or multiple files?');
 
-        $iconName = text(
-            label: 'Specify the name of the icon',
-            required: true,
-            hint: 'The name will be automatically converted to kebab-case'
-        );
+        $iconName = $this->option('name');
+
+        if ($iconName === null) {
+            if (!$this->isInteractive()) {
+                $this->error('The --name option is required for inline conversion when running non-interactively.');
+                return self::FAILURE;
+            }
+
+            $iconName = text(
+                label: 'Specify the name of the icon',
+                required: true,
+                hint: 'The name will be automatically converted to kebab-case'
+            );
+        }
 
         $kebabCaseIconName = $this->convertToKebabCase($iconName);
 
@@ -681,6 +807,10 @@ class BladeSVGPro extends Command
                 $this->writeMultipleFile($output, $data, $flux);
             } else {
                 $file_name = $this->askForFileName($output);
+                if ($file_name === null) {
+                    return self::FAILURE;
+                }
+
                 $output_file = $output . '/' . $file_name;
 
                 $this->initializeSingleOutputFile($output_file);
@@ -689,9 +819,11 @@ class BladeSVGPro extends Command
             }
 
             $this->info("\nConversion completed!");
-        } else {
-            $this->error("\nFailed to process the SVG content.");
+            return self::SUCCESS;
         }
+
+        $this->error("\nFailed to process the SVG content.");
+        return self::FAILURE;
     }
 
     private function processInlineSvg(string $svgContent, string $iconName)

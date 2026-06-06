@@ -80,12 +80,16 @@ it('avverte sull’uso non interattivo per evitare che il comando si blocchi sui
     expect($content)->toContain('single or multiple');
 });
 
-it('indica il Flux file mode come unico flusso completamente non interattivo', function () {
+it('documenta che ogni modalità è eseguibile in modo non interattivo', function () {
     $content = File::get($this->skillPath);
 
-    // L'inline NON è automatizzabile: chiede sempre il nome dell'icona
-    expect($content)->toContain('icon name');
-    expect(strtolower($content))->toContain('only fully unattended');
+    // Le nuove opzioni che rendono ogni modalità automatizzabile
+    expect($content)->toContain('--no-interaction');
+    expect($content)->toContain('--mode');
+    expect($content)->toContain('--name');
+
+    // In assenza di un valore obbligatorio, fallisce invece di bloccarsi
+    expect($content)->toContain('fail with a clear error');
 });
 
 it('documenta le convenzioni reali di input, naming e output', function () {

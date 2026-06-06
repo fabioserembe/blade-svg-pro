@@ -29,41 +29,49 @@ php artisan blade-svg-pro:convert
 Signature:
 
 ```
-blade-svg-pro:convert {--i=} {--o=} {--flux} {--inline} {--preserve-contrast} {--prefix=}
+blade-svg-pro:convert {--i=} {--o=} {--flux} {--inline} {--preserve-contrast} {--prefix=} {--name=} {--mode=}
 ```
 
 | Option | Purpose |
 |--------|---------|
-| `--i=` | Input folder containing the SVGs to convert (or raw SVG code when used with `--inline`). |
+| `--i=` | Input directory **or a single `.svg` file** to convert (or raw SVG code when used with `--inline`). |
 | `--o=` | Output folder where the generated `.blade.php` files are written. |
 | `--flux` | Generate icons compatible with Flux custom icons. Forces the output to `resources/views/flux/icon` (created if missing). |
 | `--inline` | Convert pasted SVG code instead of files. Without `--i`, prompts a textarea (finish with Ctrl+D). Normalizes the viewBox to 24×24. |
 | `--preserve-contrast` | Force-preserve white contrast elements. Normally auto-detected, so only needed as an override. |
 | `--prefix=` | Prefix all generated icon names, e.g. `--prefix=brand` produces `brand-arrow-left.blade.php`. Leave empty to skip. |
+| `--name=` | Icon name for `--inline`, and the output file name in single-file mode. Skips the corresponding prompt. |
+| `--mode=` | `single` or `multiple` output. Skips the "single or multiple?" prompt. Ignored with `--flux` (always multiple). Invalid values fail fast. |
 
-When run without `--flux`, the command asks whether to produce a **single file** (all icons in one `@switch`-based component) or **multiple files** (one component per icon).
+When run without `--flux` and without `--mode`, the command asks whether to produce a **single file** (all icons in one `@switch`-based component) or **multiple files** (one component per icon).
 
 ## Non-interactive / agent usage (read this before running)
 
-The command is interactive: every option you omit becomes a `laravel/prompts` prompt, and with no TTY (an agent or CI run) an unanswered prompt makes the command **hang forever**. Some prompts have no CLI flag at all, so not every mode can run unattended:
+The command is interactive: any option you omit becomes a `laravel/prompts` prompt, and with no TTY an unanswered prompt would otherwise **hang**. **Every mode can run fully unattended** — pass the flags for the prompts that mode would show, and/or add Laravel's global `--no-interaction`. With `--no-interaction`, omitted prompts resolve to sensible defaults (no prefix, `--mode=multiple`); any value with no default that is still missing (`--i`, `--o` in non-Flux mode, `--name` for inline or single-file) makes the command **fail with a clear error instead of hanging**.
 
-| Mode | Unattended? | Why |
-|------|-------------|-----|
-| `--flux` (files) | Yes | Pass `--i` and `--prefix=`. Output path is fixed, file type is forced to multiple, and each icon name comes from its filename — no prompts left. |
-| Standard files (no `--flux`) | No | Always asks "single or multiple files?" via a `select()` that has no flag. |
-| `--inline` | No | Always asks for the icon name via a `text()` prompt that has no flag (plus "single or multiple" unless `--flux`). |
-
-The only fully unattended invocation is **Flux file mode**:
+| Mode | Unattended invocation |
+|------|-----------------------|
+| Flux files | `--flux --i=<dir-or-file>` |
+| Standard files, multiple | `--i=<dir-or-file> --o=<dir> --mode=multiple` |
+| Standard files, single | `--i=<dir-or-file> --o=<dir> --mode=single --name=<file>` |
+| Inline | `--inline --i='<svg>…' --o=<dir> --name=<icon>` (add `--flux` to target Flux) |
 
 ```bash
-php artisan blade-svg-pro:convert --flux --i="resources/svg" --prefix=
+# Flux, unattended
+php artisan blade-svg-pro:convert --flux --i="resources/svg" --no-interaction
+
+# Standard multiple files, unattended
+php artisan blade-svg-pro:convert --i="resources/svg" --o="resources/views/components/icons" --mode=multiple --no-interaction
+
+# Inline, unattended
+php artisan blade-svg-pro:convert --inline --i='<svg>…</svg>' --o="resources/views/components/icons" --name=my-icon --no-interaction
 ```
 
-Always pass `--prefix=` (empty) even here, or it stops to ask for a prefix; use `--prefix=brand` to namespace icons instead. For standard or inline mode, a human must answer the remaining prompt(s).
+Without `--no-interaction`, any option you still omit becomes an interactive prompt. `--mode` accepts only `single` or `multiple`.
 
 ## Input, naming and output conventions
 
-- **`--i` is a directory, scanned recursively.** Non-`.svg` files are ignored. To convert a single icon, drop it into a folder and point `--i` at that folder — the component name is taken from the filename.
+- **`--i` is a directory (scanned recursively) or a single `.svg` file.** Non-`.svg` files in a directory are ignored. For one icon, point `--i` straight at the file — the component name is taken from the filename.
 - **Component name = SVG filename in kebab-case** (plus `--prefix`). `arrow-left.svg` becomes `arrow-left.blade.php`, used as `<x-icons.arrow-left />` or `<flux:icon.arrow-left />`. In Flux, **variants are runtime props** (`variant="solid"`), never separate files or part of the name.
 - **Every SVG is normalized to a 24×24 viewBox.** Non-square icons are scaled and centered into `viewBox="0 0 24 24"` with `width="24" height="24"` — this applies to file mode too, not just inline.
 - **Re-running overwrites.** In multiple-file mode a file with the same name is replaced without asking, so re-converting refreshes icons in place; single-file mode rebuilds the whole file. To add one icon to an existing set, convert just that file into the same output folder.

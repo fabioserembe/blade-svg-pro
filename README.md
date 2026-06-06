@@ -35,12 +35,28 @@ You can specify the input and output directories using the `--i` and `--o` optio
 php artisan blade-svg-pro:convert --i="path/to/svg/directory" --o="path/to/output/directory"
 ```
 #### Available Options
-- `--i`: Specifies the path to the folder containing the SVGs to be converted (or SVG code when used with `--inline`).
+- `--i`: Specifies the path to the folder **or a single `.svg` file** containing the SVGs to be converted (or SVG code when used with `--inline`).
 - `--o`: Specifies the path to the folder where the generated .blade.php files will be saved.
 - `--flux`: Enables support for custom icons compatible with the Flux package.
 - `--inline`: Enables inline SVG conversion mode, allowing you to paste SVG code directly instead of using files.
 - `--preserve-contrast`: Manually forces preservation of white colors for contrast elements (auto-detected by default).
 - `--prefix`: Adds a prefix to all generated icon names (e.g. `--prefix=brandname` will generate `brandname-icon-name.blade.php`).
+- `--name`: Sets the icon name for `--inline` mode, and the output file name in single-file mode (skips the related prompt).
+- `--mode`: Sets the output to `single` or `multiple` (skips the "single or multiple?" prompt). Ignored with `--flux`, which is always multiple.
+
+#### Non-interactive usage (CI / scripts / AI agents)
+Every option you omit becomes an interactive prompt. To run the command unattended, pass the relevant options and add Laravel's global `--no-interaction` flag, which resolves omitted prompts to sensible defaults (no prefix, `--mode=multiple`). Any required value still missing (`--i`, `--o` without `--flux`, or `--name` for inline/single-file) makes the command fail with a clear error instead of waiting for input.
+
+```bash
+# Convert a folder into multiple components, no prompts
+php artisan blade-svg-pro:convert --i="resources/svg" --o="resources/views/components/icons" --mode=multiple --no-interaction
+
+# Flux icons, no prompts
+php artisan blade-svg-pro:convert --flux --i="resources/svg" --no-interaction
+
+# Inline SVG, no prompts
+php artisan blade-svg-pro:convert --inline --i='<svg>...</svg>' --o="resources/views/components/icons" --name=my-icon --no-interaction
+```
 
 ---
 #### Inline SVG Conversion
