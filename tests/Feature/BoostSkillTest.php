@@ -138,3 +138,15 @@ it('fornisce guidelines concise che richiamano comando e skill', function () {
         expect($content)->toContain($token);
     }
 });
+
+it('non lascia tag di componente Blade fuori da @verbatim nelle guidelines', function () {
+    $content = File::get($this->guidelinesPath);
+
+    // Boost renderizza il file con Blade::render() e neutralizza solo <x-...>:
+    // un tag <namespace:...> fuori da @verbatim verrebbe compilato come componente
+    // reale nei progetti che registrano quel namespace (es. Flux).
+    $outsideVerbatim = preg_replace('/@verbatim.*?@endverbatim/s', '', $content);
+
+    expect($outsideVerbatim)->not->toMatch('/<x-[\w.-]/')
+        ->and($outsideVerbatim)->not->toMatch('/<[a-zA-Z][\w.-]*:/');
+});

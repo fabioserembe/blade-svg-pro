@@ -5,9 +5,12 @@ All notable changes to `blade-svg-pro` will be documented in this file
 ## 1.2.4 - 2026-08-24
 
 ### Changed
-- Dependency maintenance update: `laravel/prompts` (0.3.16 → 0.3.23), `spatie/image-optimizer` (1.8.1 → 1.10.0) and the dev toolchain — `orchestra/testbench` (11.1.0 → 11.2.0), `pestphp/pest` (4.6.3 → 4.7.8), `phpunit/phpunit` (12.5.23 → 12.5.33)
-- No changes to the version constraints in `composer.json`: every update is a minor/patch release within the currently supported ranges, so Laravel 8 → 13 compatibility is unchanged
-- Full test suite green after the update (59 tests, 246 assertions) with no deprecations, and `composer audit` reports no security advisories
+- Dependency maintenance update: `laravel/prompts` (0.3.16 → 0.3.23), `spatie/image-optimizer` (1.8.1 → 1.10.0), `orchestra/testbench` (11.1.0 → 11.2.0), `pestphp/pest` (4.6.3 → 4.7.8), `phpunit/phpunit` (12.5.23 → 12.5.33)
+- No changes to the version constraints in `composer.json`: Laravel 8 → 13 compatibility is unchanged
+
+### Fixed
+- The `<flux:icon.* />` reference in the Boost guideline is now wrapped in `@verbatim`. Boost renders `core.blade.php` through `Blade::render()` and neutralizes only `<x-...>` tags, so a bare `<flux:...>` tag could be compiled as a real component. Rendered output is unchanged
+- Added a regression test ensuring no component tag is left outside `@verbatim` in the guideline
 
 ## 1.2.3 - 2026-06-06
 
