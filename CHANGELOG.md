@@ -2,6 +2,13 @@
 
 All notable changes to `blade-svg-pro` will be documented in this file
 
+## 1.2.5 - 2026-11-22
+
+### Changed
+- Dependency maintenance update: `laravel/prompts` (0.3.23 → 0.3.27), `spatie/image-optimizer` (1.10.0 → 1.10.1), `orchestra/testbench` (11.2.0 → 11.3.0), `pestphp/pest` (4.7.8 → 5.3.7), `pestphp/pest-plugin-laravel` (4.1.0 → 5.0.1), `phpunit/phpunit` (12.5.33 → 13.4.7)
+- Dev constraints now require Pest 5 and PHPUnit 13, so the test suite runs on PHP 8.4 through 8.6. Production constraints are unchanged: PHP ^8.1 and Laravel 8 → 13
+- `composer test` and `composer test-coverage` run `vendor/bin/pest`, which Pest 5 requires
+
 ## 1.2.4 - 2026-08-24
 
 ### Changed
